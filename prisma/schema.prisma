@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model customer {
+  passport    String   @id @db.VarChar(50)
+  fullName    String   @db.VarChar(100)
+  email       String   @db.VarChar(100)
+  phoneNumber String   @db.VarChar(15)
+  ticket      ticket[]
+}
+
+model route {
+  route_id     Int        @id @default(autoincrement())
+  startStation String     @db.VarChar(100)
+  endStation   String     @db.VarChar(100)
+  duration     Int
+  price        Decimal    @db.Decimal(10, 2)
+  schedule     schedule[]
+}
+
+model schedule {
+  schedule_id      Int               @id
+  trainID          Int?
+  route_id         Int?
+  recurrence_id    Int?
+  depart_time      DateTime?         @db.Time(0)
+  arrival_time     DateTime?         @db.Time(0)
+  arrival_date     DateTime?         @db.Date
+  train            train?            @relation(fields: [trainID], references: [trainID], onDelete: Restrict, onUpdate: Restrict, map: "schedule_ibfk_1")
+  route            route?            @relation(fields: [route_id], references: [route_id], onDelete: Restrict, onUpdate: Restrict, map: "schedule_ibfk_2")
+  train_recurrence train_recurrence? @relation(fields: [recurrence_id], references: [recurrence_id], onDelete: Restrict, onUpdate: Restrict, map: "schedule_ibfk_3")
+
+  @@index([trainID], map: "schedule_ibfk_1")
+  @@index([route_id], map: "schedule_ibfk_2")
+  @@index([recurrence_id], map: "schedule_ibfk_3")
+}
+
+model seattrain {
+  seatID       Int      @id @default(autoincrement())
+  trainID      Int
+  travel_date  DateTime @db.Date
+  coach        String   @db.VarChar(50)
+  seat_number  String   @db.VarChar(10)
+  is_available Boolean  @default(true)
+  train        train    @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "seattrain_ibfk_1")
+  ticket       ticket[]
+
+  @@index([trainID], map: "trainID")
+}
+
+model ticket {
+  ticket_id      Int                    @id @default(autoincrement())
+  fullName       String?                @db.VarChar(100)
+  passport       String?                @db.VarChar(50)
+  phoneNumber    String?                @db.VarChar(15)
+  email          String?                @db.VarChar(100)
+  qr_code        String?                @db.VarChar(255)
+  seatID         Int?
+  coach_seat     String?                @db.VarChar(50)
+  trainID        Int?
+  travel_date    DateTime?              @db.Date
+  startStation   String?                @db.VarChar(100)
+  endStation     String?                @db.VarChar(100)
+  departTime     DateTime?              @db.Time(0)
+  arrivalTime    DateTime?              @db.Time(0)
+  price          Decimal?               @db.Decimal(10, 2)
+  payment_status ticket_payment_status?
+  refund_status  ticket_refund_status?
+  customer       customer?              @relation(fields: [passport], references: [passport], onDelete: Restrict, onUpdate: Restrict, map: "fk_passport")
+  seattrain      seattrain?             @relation(fields: [seatID], references: [seatID], onDelete: Restrict, onUpdate: Restrict, map: "fk_seatID")
+  train          train?                 @relation(fields: [trainID], references: [trainID], onDelete: Restrict, onUpdate: Restrict, map: "fk_trainID")
+
+  @@index([passport], map: "fk_passport")
+  @@index([seatID], map: "fk_seatID")
+  @@index([trainID], map: "fk_trainID")
+}
+
+model train {
+  trainID     Int         @id @default(autoincrement())
+  train_name  String      @db.VarChar(100)
+  total_seats Int
+  schedule    schedule[]
+  seattrain   seattrain[]
+  ticket      ticket[]
+}
+
+model train_recurrence {
+  recurrence_id Int        @id
+  start_date    DateTime?  @db.Date
+  end_date      DateTime?  @db.Date
+  days_of_week  String?    @db.VarChar(7)
+  schedule      schedule[]
+}
+
+enum ticket_payment_status {
+  Pending
+  Paid
+}
+
+enum ticket_refund_status {
+  None
+  Requested
+  Refunded
+}

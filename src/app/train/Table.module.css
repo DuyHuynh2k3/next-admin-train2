@@ -1,0 +1,29 @@
+/* Icon tìm kiếm */
+.customSearchIcon {
+  position: absolute;
+  right: 10px; /* Đặt biểu tượng ở phía bên phải */
+  font-size: 18px;
+  color: #888;
+  cursor: pointer;
+}
+
+.customSearch {
+  padding: 8px 15px; /* Giãn cách văn bản bên trong */
+  width: 100%;
+  border: 1px solid #ccc;
+  outline: none;
+  font-size: 14px;
+  background-color: #f9f9f9;
+  color: #495057;
+  border-radius: 20px; /* Đảm bảo bo góc giống như ô tìm kiếm */
+}
+
+/* Placeholder màu xám */
+.customSearchBox input::placeholder {
+  color: #888; /* Màu chữ placeholder */
+}
+
+.addTrainButton {
+  background-color: #ff6600;
+  font-weight: bold;
+}
