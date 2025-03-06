@@ -1,11 +1,11 @@
 "use client";
 
-import type { Metadata } from "next";
+import { usePathname } from "next/navigation";
+import { ThemeProvider } from "styled-components";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Layout from "../components/Layout/Layout";
 import { GlobalStyle } from "../styles/globalStyles";
-import { ThemeProvider } from "styled-components";
 import { lightTheme, darkTheme } from "../styles/theme";
 import { useState } from "react";
 
@@ -21,6 +21,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const pathname = usePathname(); // Lấy đường dẫn hiện tại
+
+  const isLoginPage = pathname.startsWith("/LoginTicket"); // Kiểm tra nếu là trang Login
 
   return (
     <html lang="en">
@@ -29,7 +32,8 @@ export default function RootLayout({
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
-          <Layout>{children}</Layout>
+          {/* Nếu là trang Login thì không bọc trong Layout */}
+          {isLoginPage ? children : <Layout>{children}</Layout>}
         </body>
       </ThemeProvider>
     </html>

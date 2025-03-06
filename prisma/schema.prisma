@@ -108,3 +108,9 @@ enum ticket_refund_status {
   Requested
   Refunded
 }
+
+model admin {
+  adminID  Int     @id @default(autoincrement())
+  account  String  @unique
+  password String
+}

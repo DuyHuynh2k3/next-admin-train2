@@ -1,7 +1,6 @@
 import React from "react";
 import { DataTableTicket } from "./data-table";
 import { SContainer } from "../style";
-import { LoginSignup } from "../../components/LoginTicket/LoginSignup";
 
 const TrainPage = () => {
   return (
