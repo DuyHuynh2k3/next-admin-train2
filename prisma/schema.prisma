@@ -29,8 +29,8 @@ model schedule {
   trainID          Int?
   route_id         Int?
   recurrence_id    Int?
-  depart_time      DateTime?         @db.Time(0)
-  arrival_time     DateTime?         @db.Time(0)
+  departTime       DateTime?         @db.Time(0)
+  arrivalTime      DateTime?         @db.Time(0)
   arrival_date     DateTime?         @db.Date
   train            train?            @relation(fields: [trainID], references: [trainID], onDelete: Restrict, onUpdate: Restrict, map: "schedule_ibfk_1")
   route            route?            @relation(fields: [route_id], references: [route_id], onDelete: Restrict, onUpdate: Restrict, map: "schedule_ibfk_2")
@@ -98,6 +98,20 @@ model train_recurrence {
   schedule      schedule[]
 }
 
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model admin {
+  adminID  Int
+  account  String @db.VarChar(50)
+  password String @db.VarChar(50)
+
+  @@ignore
+}
+
+model station {
+  station_id   Int    @id @default(autoincrement())
+  station_name String @unique(map: "station_name") @db.VarChar(100)
+}
+
 enum ticket_payment_status {
   Pending
   Paid
@@ -107,10 +121,4 @@ enum ticket_refund_status {
   None
   Requested
   Refunded
-}
-
-model admin {
-  adminID  Int     @id @default(autoincrement())
-  account  String  @unique
-  password String
 }
