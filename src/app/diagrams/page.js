@@ -30,7 +30,7 @@ const TrainPage = () => {
 
   return (
     <>
-      <h1 className="text-3xl font-bold mb-8 text-gray-800">Diagrams Page</h1>
+      <h1 className="text-3xl font-bold mb-8 text-gray-800">Sân ga tàu</h1>
       <SContainer>
         <div className="container mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
