@@ -57,6 +57,7 @@ export type Ticket = {
   price: number;
   trainID: string;
   qr_code: string;
+  refund_status: string; // Thêm trạng thái refund_status
 };
 
 export function DataTableTicket() {
@@ -70,6 +71,7 @@ export function DataTableTicket() {
   const [showModalUpdate, setShowModalUpdate] = React.useState(false);
   const [page, setPage] = React.useState(1);
   const [limit, setLimit] = React.useState(25);
+  const [showRequestedTickets, setShowRequestedTickets] = React.useState(false); // State để quản lý hiển thị vé "Requested"
 
   const [selectedTicketView, setSelectedTicketView] =
     React.useState<Ticket | null>(null);
@@ -85,7 +87,7 @@ export function DataTableTicket() {
           throw new Error("Failed to fetch tickets");
         }
         const data = await res.json();
-        console.log("Fetched data:", data); // Log dữ liệu trả về từ API
+        console.log("Fetched data:", data);
         if (Array.isArray(data)) {
           setTicketData(data);
         } else {
@@ -149,7 +151,7 @@ export function DataTableTicket() {
           setTicketData((prevRecords) =>
             prevRecords.filter((record) => record.ticket_id !== ticket_id)
           );
-          setError(null); // Xóa lỗi nếu thành công
+          setError(null);
         } else {
           setError(data.error || "Xóa vé thất bại");
         }
@@ -242,7 +244,7 @@ export function DataTableTicket() {
               : ticket
           )
         );
-        setError(null); // Xóa lỗi nếu thành công
+        setError(null);
         setShowModalUpdate(false);
       } else {
         setError(data.error || "Cập nhật vé thất bại");
@@ -359,36 +361,43 @@ export function DataTableTicket() {
             }}
           />
         </div>
+        <Button onClick={() => setShowRequestedTickets(!showRequestedTickets)}>
+          {showRequestedTickets ? "Xem tất cả vé" : "Xem vé yêu cầu trả"}
+        </Button>
       </div>
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.map((row) => (
-            <TableRow key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      {showRequestedTickets ? (
+        <RequestedTicketsTable />
+      ) : (
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {header.isPlaceholder
+                      ? null
+                      : flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map((row) => (
+              <TableRow key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
       {/* Modal View Ticket */}
       <Dialog
         open={showModalView}
@@ -616,5 +625,58 @@ export function DataTableTicket() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function RequestedTicketsTable() {
+  const [requestedTickets, setRequestedTickets] = React.useState<Ticket[]>([]);
+  const [loading, setLoading] = React.useState<boolean>(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const fetchRequestedTickets = async () => {
+      try {
+        const res = await fetch("/api/ticket/requested");
+        if (!res.ok) {
+          throw new Error("Failed to fetch requested tickets");
+        }
+        const data = await res.json();
+        setRequestedTickets(data);
+      } catch (error) {
+        setError(error.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRequestedTickets();
+  }, []);
+
+  if (loading) return <div>Đang tải dữ liệu...</div>;
+  if (error) return <div className="text-red-500">{error}</div>;
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Mã vé</TableHead>
+          <TableHead>Họ và tên</TableHead>
+          <TableHead>Email</TableHead>
+          <TableHead>Số điện thoại</TableHead>
+          <TableHead>Trạng thái</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {requestedTickets.map((ticket) => (
+          <TableRow key={ticket.ticket_id}>
+            <TableCell>{ticket.ticket_id}</TableCell>
+            <TableCell>{ticket.fullName}</TableCell>
+            <TableCell>{ticket.email}</TableCell>
+            <TableCell>{ticket.phoneNumber}</TableCell>
+            <TableCell>{ticket.refund_status}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }

@@ -72,6 +72,8 @@ model ticket {
   price          Decimal?               @db.Decimal(10, 2)
   payment_status ticket_payment_status?
   refund_status  ticket_refund_status?
+  payment_ticket payment_ticket[]
+  refund         refund[]
   customer       customer?              @relation(fields: [passport], references: [passport], onDelete: Restrict, onUpdate: Restrict, map: "fk_passport")
   seattrain      seattrain?             @relation(fields: [seatID], references: [seatID], onDelete: Restrict, onUpdate: Restrict, map: "fk_seatID")
   train          train?                 @relation(fields: [trainID], references: [trainID], onDelete: Restrict, onUpdate: Restrict, map: "fk_trainID")
@@ -98,6 +100,29 @@ model train_recurrence {
   schedule      schedule[]
 }
 
+model payment_ticket {
+  payment_id     Int                           @id @default(autoincrement())
+  ticket_id      Int
+  payment_method String                        @db.VarChar(50)
+  payment_amount Decimal                       @db.Decimal(10, 2)
+  payment_status payment_ticket_payment_status @default(Pending)
+  payment_date   DateTime                      @db.DateTime(0)
+  ticket         ticket                        @relation(fields: [ticket_id], references: [ticket_id], onUpdate: Restrict, map: "payment_ticket_ibfk_1")
+
+  @@index([ticket_id], map: "ticket_id")
+}
+
+model refund {
+  refund_id     Int                  @id @default(autoincrement())
+  refund_amount Decimal              @db.Decimal(10, 2)
+  refund_status refund_refund_status @default(Requested)
+  refund_date   DateTime             @db.DateTime(0)
+  ticket_id     Int?
+  ticket        ticket?              @relation(fields: [ticket_id], references: [ticket_id], onDelete: Restrict, onUpdate: Restrict, map: "refund_ibfk_1")
+
+  @@index([ticket_id], map: "refund_ibfk_1")
+}
+
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
 model admin {
   adminID  Int
@@ -121,4 +146,15 @@ enum ticket_refund_status {
   None
   Requested
   Refunded
+}
+
+enum refund_refund_status {
+  Requested
+  Refunded
+}
+
+enum payment_ticket_payment_status {
+  Pending
+  Success
+  Failed
 }

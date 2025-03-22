@@ -17,20 +17,20 @@ export async function GET(request) {
     console.log("Email:", email);
     console.log("Phone Number:", phoneNumber);
 
-    // Kiểm tra xem có ít nhất một tham số được cung cấp không
-    if (!ticket_id && !email && !phoneNumber) {
+    // Kiểm tra xem cả 3 tham số đều được cung cấp
+    if (!ticket_id || !email || !phoneNumber) {
       return NextResponse.json(
         {
           message:
-            "Vui lòng cung cấp ít nhất một thông tin (mã đặt chỗ, email hoặc số điện thoại)",
+            "Vui lòng cung cấp đầy đủ thông tin (mã đặt chỗ, email và số điện thoại)",
         },
         { status: 400 }
       );
     }
 
     // Kiểm tra ticket_id có hợp lệ không
-    const ticketId = ticket_id ? parseInt(ticket_id) : undefined;
-    if (ticketId && isNaN(ticketId)) {
+    const ticketId = parseInt(ticket_id);
+    if (isNaN(ticketId)) {
       return NextResponse.json(
         { message: "Mã đặt chỗ không hợp lệ" },
         { status: 400 }
@@ -40,10 +40,10 @@ export async function GET(request) {
     // Truy vấn database để tìm thông tin vé
     const ticketInfo = await prisma.ticket.findFirst({
       where: {
-        OR: [
+        AND: [
           { ticket_id: ticketId },
-          { email: email || undefined },
-          { phoneNumber: phoneNumber || undefined },
+          { email: email },
+          { phoneNumber: phoneNumber },
         ],
       },
       include: {
