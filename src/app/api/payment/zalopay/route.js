@@ -1,48 +1,48 @@
+//src/app/api/payment/zalopay
 import { NextResponse } from "next/server";
-import CryptoJS from "crypto-js"; // Thư viện để tạo mã HMAC
-import axios from "axios"; // Thư viện để gọi API bên ngoài
-import moment from "moment"; // Thư viện để xử lý thời gian
+import CryptoJS from "crypto-js";
+import axios from "axios";
+import moment from "moment-timezone"; // Sử dụng moment-timezone
 
-// Cấu hình ZaloPay từ biến môi trường
 const config = {
-  app_id: process.env.ZALOPAY_APP_ID, // ID ứng dụng từ ZaloPay
-  key1: process.env.ZALOPAY_KEY1, // Key1 để tạo chữ ký HMAC
-  key2: process.env.ZALOPAY_KEY2, // Key2 để xác thực callback
-  endpoint: "https://sb-openapi.zalopay.vn/v2/create", // Endpoint API ZaloPay Sandbox
+  app_id: process.env.ZALOPAY_APP_ID,
+  key1: process.env.ZALOPAY_KEY1,
+  key2: process.env.ZALOPAY_KEY2,
+  endpoint: "https://sb-openapi.zalopay.vn/v2/create",
 };
 
 export async function POST(request) {
-  // Dữ liệu nhúng (embed_data) sẽ được trả về sau khi thanh toán thành công
+  const { amount, orderId, orderInfo } = await request.json();
   const embed_data = {
-    redirecturl: "http://localhost:3001/infoseat", // URL chuyển hướng sau khi thanh toán
+    redirecturl: "http://localhost:3001/infoseat",
   };
 
-  const items = []; // Danh sách sản phẩm (nếu có)
-  const transID = Math.floor(Math.random() * 1000000); // Tạo một transaction ID ngẫu nhiên
+  const items = [];
+  const transID = Math.floor(Math.random() * 1000000);
 
-  // Tạo đối tượng đơn hàng
+  // Sử dụng moment-timezone để xử lý thời gian
+  const app_time = moment().tz("Asia/Ho_Chi_Minh").valueOf(); // Lấy thời gian hiện tại theo múi giờ Việt Nam
+
   const order = {
-    app_id: config.app_id, // ID ứng dụng
-    app_trans_id: `${moment().format("YYMMDD")}_${transID}`, // Mã giao dịch (định dạng: YYMMDD_transID)
-    app_user: "user123", // Thông tin người dùng
-    app_time: Date.now(), // Thời gian tạo đơn hàng (timestamp)
-    item: JSON.stringify(items), // Danh sách sản phẩm (dạng JSON string)
-    embed_data: JSON.stringify(embed_data), // Dữ liệu nhúng (dạng JSON string)
-    amount: 650000, // Số tiền thanh toán (đơn vị: VND)
-    callback_url: "https://b074-1-53-37-194.ngrok-free.app/callback", // URL callback để ZaloPay thông báo kết quả
-    description: `Lazada - Payment for the order #${transID}`, // Mô tả đơn hàng
-    bank_code: "", // Mã ngân hàng (nếu có)
+    app_id: config.app_id,
+    app_trans_id: `${moment().format("YYMMDD")}_${transID}`,
+    app_user: "user123",
+    app_time: app_time, // Sử dụng thời gian đã chuyển đổi
+    item: JSON.stringify(items),
+    embed_data: JSON.stringify(embed_data),
+    amount: amount,
+    callback_url: "https://b074-1-53-37-194.ngrok-free.app/callback",
+    description: `Lazada - Payment for the order #${transID}`,
+    bank_code: "",
   };
 
-  // Tạo chuỗi dữ liệu để tính toán chữ ký HMAC
   const data = `${config.app_id}|${order.app_trans_id}|${order.app_user}|${order.amount}|${order.app_time}|${order.embed_data}|${order.item}`;
-  order.mac = CryptoJS.HmacSHA256(data, config.key1).toString(); // Tạo chữ ký HMAC
+  order.mac = CryptoJS.HmacSHA256(data, config.key1).toString();
 
   try {
-    // Gọi API ZaloPay để tạo đơn hàng
     const result = await axios.post(config.endpoint, null, { params: order });
-    return NextResponse.json(result.data); // Trả về kết quả từ ZaloPay
+    return NextResponse.json(result.data);
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 }); // Xử lý lỗi
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

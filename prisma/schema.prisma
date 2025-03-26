@@ -125,11 +125,9 @@ model refund {
 
 /// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
 model admin {
-  adminID  Int
-  account  String @db.VarChar(50)
+  adminID  Int    @id @default(autoincrement()) // Thêm khóa chính
+  account  String @unique @db.VarChar(50)      // Đảm bảo account là duy nhất
   password String @db.VarChar(50)
-
-  @@ignore
 }
 
 model station {
