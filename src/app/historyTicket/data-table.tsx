@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/table";
 
 export type Ticket = {
-  ticket_id: string;
+  ticket_id: number;
   passport: string;
   fullName: string;
   phoneNumber: string;
@@ -55,9 +55,13 @@ export type Ticket = {
   departTime: string;
   arrivalTime: string;
   price: number;
-  trainID: string;
+  trainID: number;
   qr_code: string;
-  refund_status: string; // Thêm trạng thái refund_status
+  payment_status: string;
+  refund_status: string;
+  passenger_type: string;
+  seat_number?: string;
+  train_name?: string;
 };
 
 export function DataTableTicket() {
@@ -71,7 +75,7 @@ export function DataTableTicket() {
   const [showModalUpdate, setShowModalUpdate] = React.useState(false);
   const [page, setPage] = React.useState(1);
   const [limit, setLimit] = React.useState(25);
-  const [showRequestedTickets, setShowRequestedTickets] = React.useState(false); // State để quản lý hiển thị vé "Requested"
+  const [showRequestedTickets, setShowRequestedTickets] = React.useState(false);
 
   const [selectedTicketView, setSelectedTicketView] =
     React.useState<Ticket | null>(null);
@@ -87,16 +91,14 @@ export function DataTableTicket() {
           throw new Error("Failed to fetch tickets");
         }
         const data = await res.json();
-        console.log("Fetched data:", data);
-        if (Array.isArray(data)) {
-          setTicketData(data);
-        } else {
-          console.error("Fetched data is not an array:", data);
-          setTicketData([]);
-        }
+        setTicketData(data);
       } catch (error) {
         console.error("Error fetching data:", error);
-        setError(`Failed to load data: ${error.message}`);
+        setError(
+          `Failed to load data: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
       } finally {
         setLoading(false);
       }
@@ -119,45 +121,47 @@ export function DataTableTicket() {
     const lowercasedSearchText = debouncedSearchText.toLowerCase();
     return ticketData.filter((item) => {
       return (
-        item.passport.toLowerCase().includes(lowercasedSearchText) ||
-        item.fullName.toLowerCase().includes(lowercasedSearchText) ||
-        item.phoneNumber.toLowerCase().includes(lowercasedSearchText) ||
-        item.email.toLowerCase().includes(lowercasedSearchText) ||
-        item.startStation.toLowerCase().includes(lowercasedSearchText) ||
-        item.endStation.toLowerCase().includes(lowercasedSearchText) ||
+        (item.passport?.toLowerCase() || "").includes(lowercasedSearchText) ||
+        (item.fullName?.toLowerCase() || "").includes(lowercasedSearchText) ||
+        (item.phoneNumber?.toLowerCase() || "").includes(
+          lowercasedSearchText
+        ) ||
+        (item.email?.toLowerCase() || "").includes(lowercasedSearchText) ||
+        (item.startStation?.toLowerCase() || "").includes(
+          lowercasedSearchText
+        ) ||
+        (item.endStation?.toLowerCase() || "").includes(lowercasedSearchText) ||
         item.trainID.toString().includes(lowercasedSearchText) ||
         item.ticket_id.toString().includes(lowercasedSearchText) ||
-        item.qr_code.toLowerCase().includes(lowercasedSearchText) ||
-        item.coach_seat.toLowerCase().includes(lowercasedSearchText) ||
-        item.travel_date.toLowerCase().includes(lowercasedSearchText)
+        (item.qr_code?.toLowerCase() || "").includes(lowercasedSearchText) ||
+        (item.coach_seat?.toLowerCase() || "").includes(lowercasedSearchText) ||
+        (item.travel_date?.toLowerCase() || "").includes(lowercasedSearchText)
       );
     });
   }, [ticketData, debouncedSearchText]);
 
-  const handleDelete = async (ticket_id: string) => {
+  const handleDelete = async (ticket_id: number) => {
     const confirmDelete = window.confirm("Bạn có chắc muốn xóa vé này?");
     if (confirmDelete) {
       try {
         const response = await fetch(`/api/ticket?ticket_id=${ticket_id}`, {
           method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-          },
         });
 
-        const data = await response.json();
-
-        if (response.ok) {
-          setTicketData((prevRecords) =>
-            prevRecords.filter((record) => record.ticket_id !== ticket_id)
-          );
-          setError(null);
-        } else {
-          setError(data.error || "Xóa vé thất bại");
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Xóa vé thất bại");
         }
+
+        setTicketData((prevRecords) =>
+          prevRecords.filter((record) => record.ticket_id !== ticket_id)
+        );
+        setError(null);
       } catch (error) {
         console.error("Error deleting ticket:", error);
-        setError("Có lỗi xảy ra khi xóa vé");
+        setError(
+          error instanceof Error ? error.message : "Có lỗi xảy ra khi xóa vé"
+        );
       }
     }
   };
@@ -176,13 +180,17 @@ export function DataTableTicket() {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return "N/A";
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+    return date.toLocaleDateString("vi-VN");
   }
 
-  const handleView = (ticket_id: string) => {
+  function formatCurrency(amount: number): string {
+    return new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+    }).format(amount);
+  }
+
+  const handleView = (ticket_id: number) => {
     const selectedTicket = ticketData.find(
       (ticket) => ticket.ticket_id === ticket_id
     );
@@ -190,6 +198,7 @@ export function DataTableTicket() {
       const formattedTicket = {
         ...selectedTicket,
         travel_date: formatDate(selectedTicket.travel_date),
+        price: formatCurrency(selectedTicket.price),
       };
       setSelectedTicketView(formattedTicket);
       setShowModalView(true);
@@ -198,7 +207,7 @@ export function DataTableTicket() {
     }
   };
 
-  const handleUpdate = (ticket_id: string) => {
+  const handleUpdate = (ticket_id: number) => {
     const selected = ticketData.find(
       (ticket) => ticket.ticket_id === ticket_id
     );
@@ -231,36 +240,39 @@ export function DataTableTicket() {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Cập nhật vé thất bại");
       }
 
       const data = await response.json();
 
-      if (response.ok) {
-        setTicketData((prevRecords) =>
-          prevRecords.map((ticket) =>
-            ticket.ticket_id === ticket_id
-              ? { ...ticket, fullName, phoneNumber, email, passport }
-              : ticket
-          )
-        );
-        setError(null);
-        setShowModalUpdate(false);
-      } else {
-        setError(data.error || "Cập nhật vé thất bại");
-      }
+      setTicketData((prevRecords) =>
+        prevRecords.map((ticket) =>
+          ticket.ticket_id === ticket_id
+            ? { ...ticket, fullName, phoneNumber, email, passport }
+            : ticket
+        )
+      );
+      setError(null);
+      setShowModalUpdate(false);
     } catch (error) {
       console.error("Error updating ticket:", error);
-      setError("Có lỗi xảy ra khi cập nhật vé");
+      setError(
+        error instanceof Error ? error.message : "Có lỗi xảy ra khi cập nhật vé"
+      );
     }
   };
 
   const columns: ColumnDef<Ticket>[] = [
-    { accessorKey: "passport", header: "Passport" },
+    { accessorKey: "ticket_id", header: "Mã vé" },
     { accessorKey: "fullName", header: "Họ và tên" },
+    { accessorKey: "passport", header: "Passport" },
     { accessorKey: "phoneNumber", header: "Số điện thoại" },
-    { accessorKey: "email", header: "Email" },
-    { accessorKey: "coach_seat", header: "(Toa - chỗ)" },
+    {
+      accessorKey: "coach_seat",
+      header: "Toa - Ghế",
+      cell: ({ row }) => row.original.coach_seat || "N/A",
+    },
     {
       accessorKey: "travel_date",
       header: "Ngày đi",
@@ -284,11 +296,26 @@ export function DataTableTicket() {
         </span>
       ),
     },
-    { accessorKey: "price", header: "Giá vé" },
+    {
+      accessorKey: "price",
+      header: "Giá vé",
+      cell: ({ row }) => formatCurrency(row.original.price),
+    },
+    {
+      accessorKey: "refund_status",
+      header: "Trạng thái",
+      cell: ({ row }) => {
+        const status = row.original.refund_status;
+        let color = "";
+        if (status === "Requested") color = "text-orange-500";
+        if (status === "Refunded") color = "text-green-500";
+        return <span className={color}>{status || "None"}</span>;
+      },
+    },
     {
       id: "actions",
       enableHiding: false,
-      header: "Action",
+      header: "Thao tác",
       cell: ({ row }) => {
         const ticket = row.original;
         return (
@@ -296,29 +323,30 @@ export function DataTableTicket() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="h-8 w-8 p-0">
                 <span className="sr-only">Open menu</span>
-                <MoreHorizontal />
+                <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuLabel>Thao tác</DropdownMenuLabel>
               <DropdownMenuItem
-                onClick={() => {
-                  if (typeof window !== "undefined") {
-                    navigator.clipboard.writeText(ticket.ticket_id);
-                  }
-                }}
+                onClick={() =>
+                  navigator.clipboard.writeText(ticket.ticket_id.toString())
+                }
               >
-                Copy Ticket ID
+                Sao chép mã vé
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => handleView(ticket.ticket_id)}>
-                View Ticket Details
+                Xem chi tiết
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleUpdate(ticket.ticket_id)}>
-                Update Ticket Info
+                Cập nhật thông tin
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleDelete(ticket.ticket_id)}>
-                Delete Ticket
+              <DropdownMenuItem
+                onClick={() => handleDelete(ticket.ticket_id)}
+                className="text-red-500"
+              >
+                Xóa vé
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -334,74 +362,88 @@ export function DataTableTicket() {
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    initialState: {
+      pagination: {
+        pageSize: limit,
+      },
+    },
   });
 
-  if (loading) return <div>Đang tải dữ liệu...</div>;
-  if (error) return <div className="text-red-500">{error}</div>;
+  if (loading)
+    return <div className="flex justify-center py-8">Đang tải dữ liệu...</div>;
+  if (error) return <div className="text-red-500 p-4">{error}</div>;
 
   return (
-    <div className="w-full">
-      <div
-        className="flex items-center py-4"
-        style={{ marginBottom: "20px", justifyContent: "space-between" }}
-      >
-        <div style={{ position: "relative", width: "300px" }}>
-          <input
+    <div className="w-full p-4">
+      <div className="flex items-center justify-between py-4">
+        <div className="relative w-64">
+          <Input
             type="text"
-            placeholder="Search tickets..."
+            placeholder="Tìm kiếm vé..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            className={styles.customSearch}
+            className="pl-8 pr-4"
           />
-          <FiSearch
-            style={{
-              position: "absolute",
-              right: "20px",
-              top: "12px",
-            }}
-          />
+          <FiSearch className="absolute left-3 top-3 text-gray-400" />
         </div>
-        <Button onClick={() => setShowRequestedTickets(!showRequestedTickets)}>
+        <Button
+          onClick={() => setShowRequestedTickets(!showRequestedTickets)}
+          variant={showRequestedTickets ? "outline" : "default"}
+        >
           {showRequestedTickets ? "Xem tất cả vé" : "Xem vé yêu cầu trả"}
         </Button>
       </div>
+
       {showRequestedTickets ? (
         <RequestedTicketsTable />
       ) : (
         <>
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id}>
+                        {flexRender(
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableHeader>
+              <TableBody>
+                {table.getRowModel().rows?.length ? (
+                  table.getRowModel().rows.map((row) => (
+                    <TableRow
+                      key={row.id}
+                      data-state={row.getIsSelected() && "selected"}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id}>
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext()
                           )}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell
+                      colSpan={columns.length}
+                      className="h-24 text-center"
+                    >
+                      Không tìm thấy vé nào
                     </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {/* Pagination controls */}
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
           <div className="flex items-center justify-end space-x-2 py-4">
             <Button
               variant="outline"
@@ -409,7 +451,7 @@ export function DataTableTicket() {
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
             >
-              Previous
+              Trước
             </Button>
             <Button
               variant="outline"
@@ -417,187 +459,162 @@ export function DataTableTicket() {
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
             >
-              Next
+              Sau
             </Button>
             <select
+              className="border rounded p-1"
               value={table.getState().pagination.pageSize}
               onChange={(e) => {
                 table.setPageSize(Number(e.target.value));
+                setLimit(Number(e.target.value));
               }}
             >
               {[10, 20, 30, 40, 50].map((pageSize) => (
                 <option key={pageSize} value={pageSize}>
-                  Show {pageSize}
+                  Hiển thị {pageSize}
                 </option>
               ))}
             </select>
           </div>
         </>
       )}
-      {/* Modal View Ticket */}
-      <Dialog
-        open={showModalView}
-        onOpenChange={(open) => setShowModalView(open)}
-      >
+
+      {/* View Ticket Modal */}
+      <Dialog open={showModalView} onOpenChange={setShowModalView}>
         <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Chi tiết vé</DialogTitle>
             <DialogDescription>
-              Thông tin chi tiết về vé được chọn.
+              Thông tin chi tiết về vé được chọn
             </DialogDescription>
           </DialogHeader>
-
-          {!selectedTicketView ? (
-            <div>Đang tải dữ liệu...</div>
-          ) : (
+          {selectedTicketView ? (
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Ticket ID:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTicketView.ticket_id || "N/A"}
-                </span>
+                <Label className="text-right font-medium">Mã vé:</Label>
+                <div className="col-span-3">{selectedTicketView.ticket_id}</div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Train ID:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTicketView.trainID || "N/A"}
-                </span>
+                <Label className="text-right font-medium">Tên tàu:</Label>
+                <div className="col-span-3">
+                  {selectedTicketView.train_name || "N/A"}
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Passport:
-                </Label>
-                <span className="col-span-3 truncate">
+                <Label className="text-right font-medium">Họ tên:</Label>
+                <div className="col-span-3">{selectedTicketView.fullName}</div>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right font-medium">Passport:</Label>
+                <div className="col-span-3">
                   {selectedTicketView.passport || "N/A"}
-                </span>
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Full Name:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTicketView.fullName || "N/A"}
-                </span>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Phone Number:
-                </Label>
-                <span className="col-span-3 truncate">
+                <Label className="text-right font-medium">Số điện thoại:</Label>
+                <div className="col-span-3">
                   {selectedTicketView.phoneNumber || "N/A"}
-                </span>
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Email:
-                </Label>
-                <span className="col-span-3 truncate">
+                <Label className="text-right font-medium">Email:</Label>
+                <div className="col-span-3">
                   {selectedTicketView.email || "N/A"}
-                </span>
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  QR Code:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTicketView.qr_code || "N/A"}
-                </span>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Coach and Seat:
-                </Label>
-                <span className="col-span-3 truncate">
+                <Label className="text-right font-medium">Toa - Ghế:</Label>
+                <div className="col-span-3">
                   {selectedTicketView.coach_seat || "N/A"}
-                </span>
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Travel Date:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTicketView.travel_date
-                    ? selectedTicketView.travel_date.slice(0, 10)
-                    : "N/A"}
-                </span>
+                <Label className="text-right font-medium">Ngày đi:</Label>
+                <div className="col-span-3">
+                  {formatDate(selectedTicketView.travel_date)}
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Start Station:
-                </Label>
-                <span className="col-span-3 truncate">
+                <Label className="text-right font-medium">Ga đi:</Label>
+                <div className="col-span-3">
                   {selectedTicketView.startStation || "N/A"}
-                </span>
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  End Station:
-                </Label>
-                <span className="col-span-3 truncate">
+                <Label className="text-right font-medium">Ga đến:</Label>
+                <div className="col-span-3">
                   {selectedTicketView.endStation || "N/A"}
-                </span>
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Departure Time:
-                </Label>
-                <span className="col-span-3 truncate">
+                <Label className="text-right font-medium">Giờ đi:</Label>
+                <div className="col-span-3">
                   {selectedTicketView.departTime || "N/A"}
-                </span>
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Arrival Time:
-                </Label>
-                <span className="col-span-3 truncate">
+                <Label className="text-right font-medium">Giờ đến:</Label>
+                <div className="col-span-3">
                   {selectedTicketView.arrivalTime || "N/A"}
-                </span>
+                </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Price:
+                <Label className="text-right font-medium">Giá vé:</Label>
+                <div className="col-span-3">
+                  {formatCurrency(selectedTicketView.price)}
+                </div>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right font-medium">
+                  Trạng thái thanh toán:
                 </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTicketView.price !== undefined
-                    ? selectedTicketView.price
-                    : "N/A"}
-                </span>
+                <div className="col-span-3">
+                  {selectedTicketView.payment_status || "N/A"}
+                </div>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right font-medium">
+                  Trạng thái hoàn tiền:
+                </Label>
+                <div className="col-span-3">
+                  {selectedTicketView.refund_status || "N/A"}
+                </div>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right font-medium">
+                  Loại hành khách:
+                </Label>
+                <div className="col-span-3">
+                  {selectedTicketView.passenger_type || "N/A"}
+                </div>
               </div>
             </div>
+          ) : (
+            <div>Đang tải thông tin vé...</div>
           )}
-
           <DialogFooter>
             <Button onClick={() => setShowModalView(false)}>Đóng</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* Modal Update Ticket */}
-      <Dialog
-        open={showModalUpdate}
-        onOpenChange={(open) => setShowModalUpdate(open)}
-      >
-        <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
+
+      {/* Update Ticket Modal */}
+      <Dialog open={showModalUpdate} onOpenChange={setShowModalUpdate}>
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>Cập Nhật Vé</DialogTitle>
+            <DialogTitle>Cập nhật thông tin vé</DialogTitle>
             <DialogDescription>
-              Cập nhật thông tin vé bằng cách điền vào các trường dưới đây.
+              Cập nhật thông tin hành khách cho vé
             </DialogDescription>
           </DialogHeader>
-
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="ticket_id" className="text-right">
-                Ticket ID
+                Mã vé
               </Label>
               <Input
                 id="ticket_id"
-                name="ticket_id"
                 value={selectedTicketUpdate?.ticket_id || ""}
-                onChange={handleInputChange}
                 className="col-span-3"
                 disabled
               />
@@ -616,7 +633,7 @@ export function DataTableTicket() {
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="fullName" className="text-right">
-                Full Name
+                Họ và tên
               </Label>
               <Input
                 id="fullName"
@@ -628,7 +645,7 @@ export function DataTableTicket() {
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="phoneNumber" className="text-right">
-                Phone Number
+                Số điện thoại
               </Label>
               <Input
                 id="phoneNumber"
@@ -651,12 +668,11 @@ export function DataTableTicket() {
               />
             </div>
           </div>
-
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowModalUpdate(false)}>
-              Cancel
+              Hủy
             </Button>
-            <Button onClick={handleUpdateTicket}>Cập Nhật Vé</Button>
+            <Button onClick={handleUpdateTicket}>Lưu thay đổi</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -672,14 +688,16 @@ function RequestedTicketsTable() {
   React.useEffect(() => {
     const fetchRequestedTickets = async () => {
       try {
-        const res = await fetch("/api/ticket/requested");
+        const res = await fetch("/api/ticket?refund_status=Requested");
         if (!res.ok) {
           throw new Error("Failed to fetch requested tickets");
         }
         const data = await res.json();
         setRequestedTickets(data);
       } catch (error) {
-        setError(error.message);
+        setError(
+          error instanceof Error ? error.message : "Failed to load data"
+        );
       } finally {
         setLoading(false);
       }
@@ -688,31 +706,44 @@ function RequestedTicketsTable() {
     fetchRequestedTickets();
   }, []);
 
-  if (loading) return <div>Đang tải dữ liệu...</div>;
-  if (error) return <div className="text-red-500">{error}</div>;
+  if (loading)
+    return <div className="flex justify-center py-8">Đang tải dữ liệu...</div>;
+  if (error) return <div className="text-red-500 p-4">{error}</div>;
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Mã vé</TableHead>
-          <TableHead>Họ và tên</TableHead>
-          <TableHead>Email</TableHead>
-          <TableHead>Số điện thoại</TableHead>
-          <TableHead>Trạng thái</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {requestedTickets.map((ticket) => (
-          <TableRow key={ticket.ticket_id}>
-            <TableCell>{ticket.ticket_id}</TableCell>
-            <TableCell>{ticket.fullName}</TableCell>
-            <TableCell>{ticket.email}</TableCell>
-            <TableCell>{ticket.phoneNumber}</TableCell>
-            <TableCell>{ticket.refund_status}</TableCell>
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Mã vé</TableHead>
+            <TableHead>Họ và tên</TableHead>
+            <TableHead>Passport</TableHead>
+            <TableHead>Số điện thoại</TableHead>
+            <TableHead>Trạng thái</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {requestedTickets.length > 0 ? (
+            requestedTickets.map((ticket) => (
+              <TableRow key={ticket.ticket_id}>
+                <TableCell>{ticket.ticket_id}</TableCell>
+                <TableCell>{ticket.fullName}</TableCell>
+                <TableCell>{ticket.passport || "N/A"}</TableCell>
+                <TableCell>{ticket.phoneNumber || "N/A"}</TableCell>
+                <TableCell className="text-orange-500">
+                  {ticket.refund_status}
+                </TableCell>
+              </TableRow>
+            ))
+          ) : (
+            <TableRow>
+              <TableCell colSpan={5} className="h-24 text-center">
+                Không có vé nào yêu cầu hoàn tiền
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

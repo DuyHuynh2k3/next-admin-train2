@@ -9,130 +9,177 @@ datasource db {
 
 model customer {
   passport    String   @id @db.VarChar(50)
-  fullName    String   @db.VarChar(100)
-  email       String   @db.VarChar(100)
-  phoneNumber String   @db.VarChar(15)
+  fullName    String?  @db.VarChar(100)
+  email       String?  @db.VarChar(100)
+  phoneNumber String?  @db.VarChar(15)
   ticket      ticket[]
-}
-
-model route {
-  route_id     Int        @id @default(autoincrement())
-  startStation String     @db.VarChar(100)
-  endStation   String     @db.VarChar(100)
-  duration     Int
-  price        Decimal    @db.Decimal(10, 2)
-  schedule     schedule[]
 }
 
 model schedule {
   schedule_id      Int               @id
-  trainID          Int?
-  route_id         Int?
+  trainID          Int
   recurrence_id    Int?
-  departTime       DateTime?         @db.Time(0)
-  arrivalTime      DateTime?         @db.Time(0)
-  arrival_date     DateTime?         @db.Date
-  train            train?            @relation(fields: [trainID], references: [trainID], onDelete: Restrict, onUpdate: Restrict, map: "schedule_ibfk_1")
-  route            route?            @relation(fields: [route_id], references: [route_id], onDelete: Restrict, onUpdate: Restrict, map: "schedule_ibfk_2")
+  departTime       DateTime          @db.DateTime(0)
+  arrivalTime      DateTime          @db.DateTime(0)
+  actual_departure DateTime?         @db.DateTime(0)
+  actual_arrival   DateTime?         @db.DateTime(0)
+  status           schedule_status?  @default(Scheduled)
+  train            train             @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "schedule_ibfk_1")
   train_recurrence train_recurrence? @relation(fields: [recurrence_id], references: [recurrence_id], onDelete: Restrict, onUpdate: Restrict, map: "schedule_ibfk_3")
 
-  @@index([trainID], map: "schedule_ibfk_1")
-  @@index([route_id], map: "schedule_ibfk_2")
-  @@index([recurrence_id], map: "schedule_ibfk_3")
-}
-
-model seattrain {
-  seatID       Int      @id @default(autoincrement())
-  trainID      Int
-  travel_date  DateTime @db.Date
-  coach        String   @db.VarChar(50)
-  seat_number  String   @db.VarChar(10)
-  is_available Boolean  @default(true)
-  train        train    @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "seattrain_ibfk_1")
-  ticket       ticket[]
-
+  @@index([departTime], map: "idx_departure")
+  @@index([recurrence_id], map: "recurrence_id")
   @@index([trainID], map: "trainID")
 }
 
 model ticket {
-  ticket_id      Int                    @id @default(autoincrement())
-  fullName       String?                @db.VarChar(100)
-  passport       String?                @db.VarChar(50)
-  phoneNumber    String?                @db.VarChar(15)
-  email          String?                @db.VarChar(100)
-  qr_code        String?                @db.VarChar(255)
-  seatID         Int?
-  coach_seat     String?                @db.VarChar(50)
-  trainID        Int?
-  travel_date    DateTime?              @db.Date
-  startStation   String?                @db.VarChar(100)
-  endStation     String?                @db.VarChar(100)
-  departTime     DateTime?              @db.Time(0)
-  arrivalTime    DateTime?              @db.Time(0)
-  price          Decimal?               @db.Decimal(10, 2)
-  payment_status ticket_payment_status?
-  refund_status  ticket_refund_status?
-  payment_ticket payment_ticket[]
-  refund         refund[]
-  customer       customer?              @relation(fields: [passport], references: [passport], onDelete: Restrict, onUpdate: Restrict, map: "fk_passport")
-  seattrain      seattrain?             @relation(fields: [seatID], references: [seatID], onDelete: Restrict, onUpdate: Restrict, map: "fk_seatID")
-  train          train?                 @relation(fields: [trainID], references: [trainID], onDelete: Restrict, onUpdate: Restrict, map: "fk_trainID")
+  ticket_id                               Int                    @id @default(autoincrement())
+  fullName                                String                 @db.VarChar(100)
+  passport                                String?                @db.VarChar(50)
+  phoneNumber                             String?                @db.VarChar(15)
+  email                                   String?                @db.VarChar(100)
+  q_code                                  String?                @db.VarChar(255)
+  seatID                                  Int?
+  coach_seat                              String?                @db.VarChar(50)
+  trainID                                 Int
+  travel_date                             DateTime               @db.Date
+  from_station_id                         Int
+  to_station_id                           Int
+  departTime                              DateTime               @db.Time(0)
+  arrivalTime                             DateTime               @db.Time(0)
+  price                                   Decimal                @db.Decimal(10, 2)
+  payment_status                          ticket_payment_status? @default(Pending)
+  refund_status                           ticket_refund_status?  @default(None)
+  passenger_type                          ticket_passenger_type? @default(Adult)
+  journey_segments                        String?                @db.LongText
+  payment_ticket                          payment_ticket[]
+  refund                                  refund[]
+  customer                                customer?              @relation(fields: [passport], references: [passport], onDelete: Cascade, map: "fk_passport")
+  train                                   train                  @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "fk_trainID")
+  station_ticket_from_station_idTostation station                @relation("ticket_from_station_idTostation", fields: [from_station_id], references: [station_id], onUpdate: Restrict, map: "ticket_ibfk_2")
+  station_ticket_to_station_idTostation   station                @relation("ticket_to_station_idTostation", fields: [to_station_id], references: [station_id], onUpdate: Restrict, map: "ticket_ibfk_3")
+  seattrain                               seatrain?              @relation(fields: [seatID], references: [seatID], map: "fk_seatID")
 
-  @@index([passport], map: "fk_passport")
-  @@index([seatID], map: "fk_seatID")
-  @@index([trainID], map: "fk_trainID")
+  @@index([passport], map: "fk_ticket_customer")
+  @@index([from_station_id], map: "from_station_id")
+  @@index([travel_date], map: "idx_travel_date")
+  @@index([seatID], map: "ticket_ibfk_4")
+  @@index([to_station_id], map: "to_station_id")
+  @@index([trainID], map: "trainID")
 }
 
 model train {
-  trainID     Int         @id @default(autoincrement())
-  train_name  String      @db.VarChar(100)
-  total_seats Int
-  schedule    schedule[]
-  seattrain   seattrain[]
-  ticket      ticket[]
+  trainID       Int             @id
+  train_name    String          @db.VarChar(100)
+  total_seats   Int
+  schedule      schedule[]
+  seat_template seat_template[]
+  seatrain      seatrain[]
+  ticket        ticket[]
+  train_stop    train_stop[]
 }
 
 model train_recurrence {
   recurrence_id Int        @id
-  start_date    DateTime?  @db.Date
-  end_date      DateTime?  @db.Date
-  days_of_week  String?    @db.VarChar(7)
+  start_date    DateTime   @db.Date
+  end_date      DateTime   @db.Date
+  days_of_week  String     @db.VarChar(7)
   schedule      schedule[]
 }
 
 model payment_ticket {
-  payment_id     Int                           @id @default(autoincrement())
+  payment_id     Int                            @id @default(autoincrement())
   ticket_id      Int
-  payment_method String                        @db.VarChar(50)
-  payment_amount Decimal                       @db.Decimal(10, 2)
-  payment_status payment_ticket_payment_status @default(Pending)
-  payment_date   DateTime                      @db.DateTime(0)
-  ticket         ticket                        @relation(fields: [ticket_id], references: [ticket_id], onUpdate: Restrict, map: "payment_ticket_ibfk_1")
+  payment_method String?                        @db.VarChar(50)
+  payment_amount Decimal?                       @db.Decimal(10, 2)
+  payment_status payment_ticket_payment_status?
+  payment_date   DateTime?                      @db.DateTime(0)
+  ticket         ticket                         @relation(fields: [ticket_id], references: [ticket_id], onUpdate: Restrict, map: "payment_ticket_ibfk_1")
 
   @@index([ticket_id], map: "ticket_id")
 }
 
 model refund {
-  refund_id     Int                  @id @default(autoincrement())
-  refund_amount Decimal              @db.Decimal(10, 2)
-  refund_status refund_refund_status @default(Requested)
-  refund_date   DateTime             @db.DateTime(0)
+  refund_id     Int                   @id
+  refund_amount Decimal?              @db.Decimal(10, 2)
+  refund_status refund_refund_status?
+  refund_date   DateTime?             @db.DateTime(0)
   ticket_id     Int?
-  ticket        ticket?              @relation(fields: [ticket_id], references: [ticket_id], onDelete: Restrict, onUpdate: Restrict, map: "refund_ibfk_1")
+  ticket        ticket?               @relation(fields: [ticket_id], references: [ticket_id], onDelete: Restrict, onUpdate: Restrict, map: "refund_ibfk_1")
 
-  @@index([ticket_id], map: "refund_ibfk_1")
+  @@index([ticket_id], map: "ticket_id")
 }
 
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
 model admin {
-  adminID  Int    @id @default(autoincrement()) // Thêm khóa chính
-  account  String @unique @db.VarChar(50)      // Đảm bảo account là duy nhất
-  password String @db.VarChar(50)
+  adminID  Int     @id
+  account  String? @db.VarChar(50)
+  password String? @db.VarChar(50)
 }
 
 model station {
-  station_id   Int    @id @default(autoincrement())
-  station_name String @unique(map: "station_name") @db.VarChar(100)
+  station_id                                           Int             @id
+  station_name                                         String          @db.VarChar(100)
+  route_segment_route_segment_from_station_idTostation route_segment[] @relation("route_segment_from_station_idTostation")
+  route_segment_route_segment_to_station_idTostation   route_segment[] @relation("route_segment_to_station_idTostation")
+  ticket_ticket_from_station_idTostation               ticket[]        @relation("ticket_from_station_idTostation")
+  ticket_ticket_to_station_idTostation                 ticket[]        @relation("ticket_to_station_idTostation")
+  train_stop                                           train_stop[]
+}
+
+model route_segment {
+  segment_id                                     Int     @id @default(autoincrement())
+  from_station_id                                Int
+  to_station_id                                  Int
+  duration                                       Int
+  base_price                                     Decimal @db.Decimal(10, 2)
+  station_route_segment_from_station_idTostation station @relation("route_segment_from_station_idTostation", fields: [from_station_id], references: [station_id], onUpdate: Restrict, map: "route_segment_ibfk_1")
+  station_route_segment_to_station_idTostation   station @relation("route_segment_to_station_idTostation", fields: [to_station_id], references: [station_id], onUpdate: Restrict, map: "route_segment_ibfk_2")
+
+  @@unique([from_station_id, to_station_id], map: "from_station_id")
+  @@index([to_station_id], map: "to_station_id")
+}
+
+model train_stop {
+  stop_id        Int       @id @default(autoincrement())
+  trainID        Int
+  station_id     Int
+  stop_order     Int
+  arrival_time   DateTime? @db.Time(0)
+  departure_time DateTime? @db.Time(0)
+  stop_duration  Int?      @default(0)
+  train          train     @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "train_stop_ibfk_1")
+  station        station   @relation(fields: [station_id], references: [station_id], onUpdate: Restrict, map: "train_stop_ibfk_2")
+
+  @@unique([trainID, station_id], map: "trainID")
+  @@unique([trainID, stop_order], map: "trainID_2")
+  @@index([station_id], map: "station_id")
+  @@index([arrival_time], map: "idx_arrival")
+  @@index([departure_time], map: "idx_departure")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model seat_template {
+  template_id Int                     @id @default(autoincrement())
+  trainID     Int
+  coach       String                  @db.VarChar(50)
+  seat_number String                  @db.VarChar(10)
+  seat_type   seat_template_seat_type
+  train       train                   @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "seat_template_ibfk_1")
+
+  @@unique([trainID, coach, seat_number], map: "unique_template_seat")
+}
+
+model seatrain {
+  seatID       Int      @id @default(autoincrement())
+  trainID      Int
+  travel_date  DateTime @db.Date
+  coach        String   @db.VarChar(10)
+  seat_number  String   @db.VarChar(10)
+  is_available Boolean  @default(true)
+  train        train    @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "seatrain_ibfk_1")
+  ticket       ticket[]
+
+  @@unique([trainID, travel_date, coach, seat_number], map: "trainID")
 }
 
 enum ticket_payment_status {
@@ -155,4 +202,25 @@ enum payment_ticket_payment_status {
   Pending
   Success
   Failed
+}
+
+enum schedule_status {
+  Scheduled
+  Departed
+  Arrived
+  Cancelled
+  Delayed
+}
+
+enum ticket_passenger_type {
+  Adult
+  Student
+  Senior
+  Child
+}
+
+enum seat_template_seat_type {
+  soft
+  hard_sleeper_6
+  hard_sleeper_4
 }

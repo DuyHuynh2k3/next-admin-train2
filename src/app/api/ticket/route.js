@@ -1,20 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 
-// Singleton pattern for Prisma Client
 const prisma = new PrismaClient();
 
-// Ensure connection is managed properly
-if (process.env.NODE_ENV === "production") {
-  prisma.$connect().catch((err) => {
-    console.error("Failed to connect to the database:", err);
-    process.exit(1);
-  });
-}
-
-// Function to format time from DateTime to HH:MM
 function formatTime(dateTime) {
   if (!dateTime || isNaN(new Date(dateTime).getTime())) {
-    return null; // Return null if dateTime is invalid
+    return null;
   }
   const date = new Date(dateTime);
   const hours = date.getUTCHours().toString().padStart(2, "0");
@@ -22,44 +12,75 @@ function formatTime(dateTime) {
   return `${hours}:${minutes}`;
 }
 
-// GET request handler to fetch ticket data
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const page = Math.max(1, parseInt(searchParams.get("page")) || 1); // Ensure page is a positive integer
-  const limit = Math.max(1, parseInt(searchParams.get("limit")) || 25); // Ensure limit is a positive integer
-
-  console.log("Fetching tickets with page:", page, "and limit:", limit);
+  const page = Math.max(1, parseInt(searchParams.get("page")) || 1);
+  const limit = Math.max(1, parseInt(searchParams.get("limit")) || 25);
+  const refund_status = searchParams.get("refund_status");
 
   try {
+    const whereClause = refund_status ? { refund_status } : {};
+
     const tickets = await prisma.ticket.findMany({
+      where: whereClause,
       select: {
         ticket_id: true,
         passport: true,
         fullName: true,
         phoneNumber: true,
         email: true,
-        train: { select: { train_name: true } },
-        startStation: true,
-        endStation: true,
-        coach_seat: true,
-        seattrain: { select: { seat_number: true } },
-        price: true,
-        trainID: true,
-        qr_code: true,
+        q_code: true,
         seatID: true,
+        coach_seat: true,
+        trainID: true,
         travel_date: true,
+        from_station_id: true,
+        to_station_id: true,
         departTime: true,
         arrivalTime: true,
+        price: true,
+        payment_status: true,
+        refund_status: true,
+        passenger_type: true,
+        train: {
+          select: {
+            train_name: true,
+          },
+        },
+        seattrain: {
+          select: {
+            seat_number: true,
+            coach: true,
+          },
+        },
+        station_ticket_from_station_idTostation: {
+          select: {
+            station_name: true,
+          },
+        },
+        station_ticket_to_station_idTostation: {
+          select: {
+            station_name: true,
+          },
+        },
       },
-      skip: (page - 1) * limit, // Skip records from previous pages
-      take: limit, // Limit the number of records
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
-    // Format departTime and arrivalTime to HH:MM
     const formattedTickets = tickets.map((ticket) => ({
       ...ticket,
+      qr_code: ticket.q_code,
+      startStation:
+        ticket.station_ticket_from_station_idTostation?.station_name || "N/A",
+      endStation:
+        ticket.station_ticket_to_station_idTostation?.station_name || "N/A",
       departTime: formatTime(ticket.departTime),
       arrivalTime: formatTime(ticket.arrivalTime),
+      coach_seat: ticket.seattrain
+        ? `${ticket.seattrain.coach}-${ticket.seattrain.seat_number}`
+        : ticket.coach_seat,
+      train_name: ticket.train?.train_name || "N/A",
     }));
 
     return new Response(JSON.stringify(formattedTickets), {
@@ -81,7 +102,6 @@ export async function GET(request) {
   }
 }
 
-// DELETE request handler to delete a ticket
 export async function DELETE(request) {
   const { searchParams } = new URL(request.url);
   const ticket_id = searchParams.get("ticket_id");
@@ -94,26 +114,47 @@ export async function DELETE(request) {
   }
 
   try {
-    const result = await prisma.ticket.deleteMany({
+    // Check if ticket has payments or refunds first
+    const payments = await prisma.payment_ticket.count({
       where: { ticket_id: parseInt(ticket_id) },
     });
 
-    if (result.count > 0) {
+    const refunds = await prisma.refund.count({
+      where: { ticket_id: parseInt(ticket_id) },
+    });
+
+    if (payments > 0 || refunds > 0) {
       return new Response(
-        JSON.stringify({ message: "Ticket deleted successfully" }),
+        JSON.stringify({
+          error: "Cannot delete ticket with associated payments or refunds",
+          details: "Please cancel payments/refunds first",
+        }),
         {
-          status: 200,
+          status: 400,
           headers: { "Content-Type": "application/json" },
         }
       );
-    } else {
+    }
+
+    const result = await prisma.ticket.delete({
+      where: { ticket_id: parseInt(ticket_id) },
+    });
+
+    return new Response(
+      JSON.stringify({ message: "Ticket deleted successfully" }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  } catch (error) {
+    console.error("Error deleting ticket:", error);
+    if (error.code === "P2025") {
       return new Response(JSON.stringify({ error: "Ticket not found" }), {
         status: 404,
         headers: { "Content-Type": "application/json" },
       });
     }
-  } catch (error) {
-    console.error("Error deleting ticket:", error);
     return new Response(
       JSON.stringify({
         error: "Failed to delete ticket",
@@ -127,18 +168,9 @@ export async function DELETE(request) {
   }
 }
 
-// PUT request handler to update a ticket
 export async function PUT(request) {
   const { ticket_id, passport, fullName, phoneNumber, email } =
     await request.json();
-
-  console.log("Received data for update:", {
-    ticket_id,
-    passport,
-    fullName,
-    phoneNumber,
-    email,
-  });
 
   if (!ticket_id || !passport || !fullName || !phoneNumber || !email) {
     return new Response(JSON.stringify({ error: "All fields are required" }), {
@@ -148,7 +180,7 @@ export async function PUT(request) {
   }
 
   try {
-    // Check if passport exists in the Customer table
+    // Check if passport exists in customer table
     const customer = await prisma.customer.findUnique({
       where: { passport: passport },
     });
@@ -174,9 +206,11 @@ export async function PUT(request) {
       },
     });
 
-    console.log("Ticket updated successfully");
     return new Response(
-      JSON.stringify({ message: "Ticket updated successfully" }),
+      JSON.stringify({
+        message: "Ticket updated successfully",
+        ticket: updatedTicket,
+      }),
       {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -185,7 +219,6 @@ export async function PUT(request) {
   } catch (error) {
     console.error("Error updating ticket:", error);
     if (error.code === "P2025") {
-      // Error when record is not found
       return new Response(JSON.stringify({ error: "Ticket not found" }), {
         status: 404,
         headers: { "Content-Type": "application/json" },

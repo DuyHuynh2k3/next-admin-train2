@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { FiSearch } from "react-icons/fi";
-import styles from "./Table.module.css";
 import { Button } from "@/components/ui/button";
+import { UpdateSegmentPrices } from "../../components/UpdateSegmentPrices/UpdateSegmentPrices";
 import {
   Dialog,
   DialogFooter,
@@ -41,24 +41,35 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { toast } from "sonner";
 
-export type Train = {
-  trainID: string;
+type Segment = {
+  from: string;
+  to: string;
+  price: number;
+  departTime: string;
+  arrivalTime: string;
+  from_station_id: number;
+  to_station_id: number;
+};
+
+type Train = {
+  trainID: number;
   train_name: string;
+  total_seats: number;
   startStation: string;
   endStation: string;
   departTime: string;
   arrivalTime: string;
   price: number;
-  total_seats: number;
-  start_date: Date;
-  end_date: Date;
   duration: number;
-  route_id: number;
+  start_date: string;
+  end_date: string;
+  days_of_week: string;
   schedule_id: number;
   recurrence_id?: number;
-  days_of_week: string;
-  arrival_date: Date;
+  status?: string;
+  segments: Segment[];
 };
 
 export function DataTableTrain() {
@@ -66,139 +77,88 @@ export function DataTableTrain() {
   const [loading, setLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
   const [searchText, setSearchText] = React.useState("");
-  const [debouncedSearchText, setDebouncedSearchText] =
-    React.useState(searchText);
-  const [showModal, setShowModal] = React.useState(false);
+  const [debouncedSearchText, setDebouncedSearchText] = React.useState("");
   const [showModalAdd, setShowModalAdd] = React.useState(false);
   const [showModalView, setShowModalView] = React.useState(false);
   const [showModalUpdate, setShowModalUpdate] = React.useState(false);
 
-  const [newTrain, setNewTrain] = React.useState<Train>({} as Train);
+  const [newTrain, setNewTrain] = React.useState<Partial<Train>>({});
   const [selectedTrainView, setSelectedTrainView] =
     React.useState<Train | null>(null);
   const [selectedTrainUpdate, setSelectedTrainUpdate] =
     React.useState<Train | null>(null);
 
-  React.useEffect(() => {
-    // Khởi tạo giá trị động sau khi component mount
-    setNewTrain({
-      trainID: "",
-      train_name: "",
-      startStation: "",
-      endStation: "",
-      departTime: "",
-      arrivalTime: "",
-      price: 0,
-      total_seats: 0,
-      start_date: new Date(),
-      end_date: new Date(),
-      duration: 0,
-      route_id: 0,
-      schedule_id: 0,
-      recurrence_id: 0,
-      arrival_date: new Date(),
-      days_of_week: "",
-    });
-  }, []); // Chỉ chạy một lần sau khi component mount
+  // Định nghĩa hàm fetchData ở cấp độ component
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/trains");
+      if (!res.ok) throw new Error("Failed to fetch trains");
+      const data = await res.json();
+      setTrainData(data);
+    } catch (error) {
+      console.error("Error fetching data:", error);
+      setError(error instanceof Error ? error.message : "Failed to load data");
+      toast.error("Lỗi khi tải dữ liệu tàu");
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  // Sử dụng useEffect với fetchData
   React.useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Chỉ fetch data nếu trainData rỗng
-        if (trainData.length === 0) {
-          const res = await fetch("/api/trains");
-          if (!res.ok) throw new Error("Failed to fetch trains");
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            setTrainData(data);
-          } else {
-            console.error("Fetched data is not an array:", data);
-            setTrainData([]);
-          }
-        }
-      } catch (error) {
-        console.error("Error fetching data:", error);
-        setError("Failed to load data");
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchData();
-  }, [trainData]);
+  }, []);
 
   // Debounce search text
   React.useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedSearchText(searchText); // Cập nhật debouncedSearchText sau 300ms
+      setDebouncedSearchText(searchText);
     }, 300);
 
-    return () => clearTimeout(timer); // Clear timer nếu searchText thay đổi trước khi hết 300ms
-  }, [searchText]); // Chỉ chạy lại khi searchText thay đổi
+    return () => clearTimeout(timer);
+  }, [searchText]);
 
   // Filter data based on debounced search text
   const filteredData = React.useMemo(() => {
     const lowercasedSearchText = debouncedSearchText.toLowerCase();
     return trainData.filter((item) => {
       return (
-        (item.trainID &&
-          item.trainID
-            .toString()
-            .toLowerCase()
-            .includes(lowercasedSearchText)) ||
-        (item.train_name &&
-          item.train_name.toLowerCase().includes(lowercasedSearchText)) ||
-        (item.startStation &&
-          item.startStation.toLowerCase().includes(lowercasedSearchText)) ||
-        (item.endStation &&
-          item.endStation.toLowerCase().includes(lowercasedSearchText)) ||
-        (item.departTime &&
-          item.departTime.toLowerCase().includes(lowercasedSearchText))
+        item.trainID.toString().toLowerCase().includes(lowercasedSearchText) ||
+        item.train_name?.toLowerCase().includes(lowercasedSearchText) ||
+        item.startStation?.toLowerCase().includes(lowercasedSearchText) ||
+        item.endStation?.toLowerCase().includes(lowercasedSearchText) ||
+        item.departTime?.toLowerCase().includes(lowercasedSearchText)
       );
     });
-  }, [trainData, debouncedSearchText]); // Chỉ tính toán lại khi trainData hoặc debouncedSearchText thay đổi
+  }, [trainData, debouncedSearchText]);
 
-  const handleDelete = async (trainID: string) => {
+  const handleDelete = async (trainID: number) => {
     const confirmDelete = window.confirm(
       "Bạn có chắc muốn xóa chuyến tàu này?"
     );
     if (confirmDelete) {
       try {
-        console.log("Deleting train with ID:", trainID);
         const response = await fetch(`/api/trains?trainID=${trainID}`, {
           method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-          },
         });
 
-        console.log("Response status:", response.status);
-
-        // Đọc phản hồi từ server dưới dạng JSON
         const data = await response.json();
-        console.log("Parsed response data:", data);
 
         if (!response.ok) {
-          // Nếu phản hồi không thành công, hiển thị thông báo lỗi từ server
           throw new Error(data.error || "Failed to delete train");
         }
 
-        // Nếu xóa thành công, cập nhật state và hiển thị thông báo
-        if (data.message === "Xóa thành công") {
-          setTrainData((prevRecords) =>
-            prevRecords.filter((train) => train.trainID !== trainID)
-          );
-          alert("Chuyến tàu đã được xóa thành công!");
-        } else {
-          alert("Không thể xóa chuyến tàu");
-        }
+        setTrainData((prevRecords) =>
+          prevRecords.filter((train) => train.trainID !== trainID)
+        );
+        alert("Chuyến tàu đã được xóa thành công!");
       } catch (error) {
         console.error("Error deleting train:", error);
-        if (error instanceof Error) {
-          alert("Có lỗi xảy ra khi xóa chuyến tàu: " + error.message);
-        } else {
-          alert("Có lỗi xảy ra khi xóa chuyến tàu");
-        }
+        alert(
+          "Có lỗi xảy ra khi xóa chuyến tàu: " +
+            (error instanceof Error ? error.message : "")
+        );
       }
     }
   };
@@ -226,16 +186,10 @@ export function DataTableTrain() {
       "endStation",
       "departTime",
       "arrivalTime",
-      "price",
       "total_seats",
       "start_date",
       "end_date",
-      "duration",
-      "route_id",
-      "schedule_id",
-      "recurrence_id",
       "days_of_week",
-      "arrival_date",
     ];
 
     for (let field of requiredFields) {
@@ -245,34 +199,45 @@ export function DataTableTrain() {
       }
     }
 
-    // Chuyển đổi kiểu dữ liệu
-    const payload = {
-      ...newTrain,
-      price: parseFloat(newTrain.price.toString()), // Chuyển đổi sang số thập phân
-      total_seats: parseInt(newTrain.total_seats.toString()), // Chuyển đổi sang số nguyên
-      duration: parseInt(newTrain.duration.toString()), // Chuyển đổi sang số nguyên
-      route_id: parseInt(newTrain.route_id.toString()), // Chuyển đổi sang số nguyên
-      schedule_id: parseInt(newTrain.schedule_id.toString()), // Chuyển đổi sang số nguyên
-      recurrence_id: parseInt(newTrain.recurrence_id?.toString() || "0"), // Kiểm tra và chuyển đổi sang số nguyên
-      arrival_date: new Date(newTrain.arrival_date).toISOString(), // Chuyển đổi thành chuỗi ISO
-    };
-
-    console.log("Thông tin chuyến tàu:", payload);
-
     try {
       const response = await fetch("/api/trains", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          trainID: parseInt(newTrain.trainID?.toString() || "0"),
+          train_name: newTrain.train_name,
+          total_seats: parseInt(newTrain.total_seats?.toString() || "0"),
+          startStation: newTrain.startStation,
+          endStation: newTrain.endStation,
+          departTime: newTrain.departTime,
+          arrivalTime: newTrain.arrivalTime,
+          start_date: newTrain.start_date,
+          end_date: newTrain.end_date,
+          days_of_week: newTrain.days_of_week,
+          stops: [
+            {
+              station_id: newTrain.startStation,
+              arrival_time: "00:00",
+              departure_time: newTrain.departTime,
+              stop_duration: 0,
+            },
+            {
+              station_id: newTrain.endStation,
+              arrival_time: newTrain.arrivalTime,
+              departure_time: "00:00",
+              stop_duration: 0,
+            },
+          ],
+        }),
       });
 
       const data = await response.json();
-      console.log("Server response:", data); // Hiển thị phản hồi từ server
 
       if (response.ok) {
         setTrainData((prevRecords) => [...prevRecords, data]);
         alert("Chuyến tàu đã được thêm thành công!");
         setShowModalAdd(false);
+        setNewTrain({});
       } else {
         alert(data.error || "Thêm chuyến tàu thất bại");
       }
@@ -282,9 +247,7 @@ export function DataTableTrain() {
     }
   };
 
-  const handleView = async (trainID: string) => {
-    if (showModalView) return;
-
+  const handleView = async (trainID: number) => {
     try {
       const response = await fetch(`/api/trains?trainID=${trainID}`);
       if (response.ok) {
@@ -298,23 +261,10 @@ export function DataTableTrain() {
     }
   };
 
-  // Hàm chuẩn hóa thời gian
-  const formatTime = (time) => {
-    if (time && time.length === 5) {
-      return `${time}:00`; // Thêm :00 nếu chỉ có HH:MM
-    }
-    return time; // Giữ nguyên nếu đã có định dạng HH:MM:SS
-  };
-
-  const handleUpdate = (trainID: string) => {
+  const handleUpdate = (trainID: number) => {
     const selected = trainData.find((train) => train.trainID === trainID);
     if (selected) {
-      setSelectedTrainUpdate({
-        ...selected,
-        route_id: selected.route_id, // Đảm bảo route_id được lấy
-        schedule_id: selected.schedule_id, // Đảm bảo schedule_id được lấy
-        recurrence_id: selected.recurrence_id, // Đảm bảo recurrence_id được lấy
-      });
+      setSelectedTrainUpdate(selected);
       setShowModalUpdate(true);
     }
   };
@@ -325,66 +275,34 @@ export function DataTableTrain() {
       return;
     }
 
-    const {
-      trainID,
-      train_name,
-      startStation,
-      endStation,
-      departTime,
-      arrivalTime,
-      price,
-      total_seats,
-      start_date,
-      end_date,
-      duration,
-      route_id,
-      schedule_id,
-      recurrence_id,
-      days_of_week,
-    } = selectedTrainUpdate;
-
-    // Chuẩn hóa departTime và arrivalTime
-    const formattedDepartTime = formatTime(departTime);
-    const formattedArrivalTime = formatTime(arrivalTime);
-
-    const updatedTrain = {
-      trainID,
-      train_name,
-      startStation,
-      endStation,
-      departTime: formattedDepartTime, // Sử dụng giá trị đã chuẩn hóa
-      arrivalTime: formattedArrivalTime, // Sử dụng giá trị đã chuẩn hóa
-      price,
-      total_seats,
-      start_date,
-      end_date,
-      duration,
-      route_id,
-      schedule_id,
-      recurrence_id,
-      days_of_week,
-    };
-
     try {
-      const response = await fetch(`/api/trains/`, {
+      const response = await fetch(`/api/trains`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedTrain),
+        body: JSON.stringify({
+          trainID: selectedTrainUpdate.trainID,
+          train_name: selectedTrainUpdate.train_name,
+          total_seats: selectedTrainUpdate.total_seats,
+          departTime: selectedTrainUpdate.departTime,
+          arrivalTime: selectedTrainUpdate.arrivalTime,
+          start_date: selectedTrainUpdate.start_date,
+          end_date: selectedTrainUpdate.end_date,
+          days_of_week: selectedTrainUpdate.days_of_week,
+        }),
       });
-
-      console.log("Data being sent:", updatedTrain);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log("Server response:", data);
 
       if (response.ok) {
         setTrainData((prevRecords) =>
           prevRecords.map((train) =>
-            train.trainID === trainID ? { ...train, ...updatedTrain } : train
+            train.trainID === selectedTrainUpdate.trainID
+              ? selectedTrainUpdate
+              : train
           )
         );
         alert("Chuyến tàu đã được cập nhật thành công!");
@@ -398,25 +316,41 @@ export function DataTableTrain() {
     }
   };
 
-  const handleAddTrainButtonClick = () => {
-    setShowModalAdd(true); // This will open the modal when the button is clicked
-  };
-
-  const currentYear = new Date().getFullYear();
-  const lastYear = currentYear - 1;
-
   const columns: ColumnDef<Train>[] = [
-    { accessorKey: "trainID", header: "Train ID" },
-    { accessorKey: "train_name", header: "Train" },
+    { accessorKey: "trainID", header: "Mã tàu" },
+    { accessorKey: "train_name", header: "Tên tàu" },
     { accessorKey: "startStation", header: "Ga đi" },
     { accessorKey: "endStation", header: "Ga đến" },
-    { accessorKey: "departTime", header: "Giờ khởi hành" },
-    { accessorKey: "price", header: "Giá vé" },
-    { accessorKey: "total_seats", header: "Chỗ ngồi" },
+    {
+      accessorKey: "departTime",
+      header: "Giờ khởi hành",
+      cell: ({ row }) => row.original.departTime || "--:--",
+    },
+    {
+      accessorKey: "price",
+      header: "Giá vé",
+      cell: ({ row }) => {
+        const price = row.original.price || 0;
+        return (
+          <span className="font-medium">
+            {new Intl.NumberFormat("vi-VN", {
+              style: "currency",
+              currency: "VND",
+            }).format(price)}
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "duration",
+      header: "Thời gian (phút)",
+      cell: ({ row }) => row.original.duration || 0,
+    },
+    { accessorKey: "total_seats", header: "Số ghế" },
     {
       id: "actions",
       enableHiding: false,
-      header: "Action",
+      header: "Thao tác",
       cell: ({ row }) => {
         const train = row.original;
         return (
@@ -424,29 +358,39 @@ export function DataTableTrain() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="h-8 w-8 p-0">
                 <span className="sr-only">Open menu</span>
-                <MoreHorizontal />
+                <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuLabel>Thao tác</DropdownMenuLabel>
               <DropdownMenuItem
-                onClick={() => {
-                  if (typeof window !== "undefined") {
-                    navigator.clipboard.writeText(train.trainID);
-                  }
-                }}
+                onClick={() =>
+                  navigator.clipboard.writeText(train.trainID.toString())
+                }
               >
-                Copy Train ID
+                Sao chép mã tàu
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => handleView(train.trainID)}>
-                View Train Details
+                Xem chi tiết
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleUpdate(train.trainID)}>
-                Update Train Info
+                Cập nhật
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleDelete(train.trainID)}>
-                Delete Train
+              <DropdownMenuItem
+                onClick={() => handleDelete(train.trainID)}
+                className="text-red-500"
+              >
+                Xóa
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(e) => e.preventDefault()}
+                className="flex items-center"
+              >
+                <UpdateSegmentPrices
+                  trainID={train.trainID}
+                  onUpdate={fetchData}
+                />
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -456,7 +400,7 @@ export function DataTableTrain() {
   ];
 
   const table = useReactTable({
-    data: filteredData, // Sử dụng filteredData
+    data: filteredData,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -464,127 +408,144 @@ export function DataTableTrain() {
     getFilteredRowModel: getFilteredRowModel(),
   });
 
-  if (loading) return <div>Đang tải dữ liệu...</div>;
-  if (error) return <div className="text-red-500">{error}</div>;
+  if (loading)
+    return <div className="flex justify-center py-8">Đang tải dữ liệu...</div>;
+  if (error) return <div className="text-red-500 p-4">{error}</div>;
 
   return (
-    <div className="w-full">
-      <div
-        className="flex items-center py-4"
-        style={{ marginBottom: "20px", justifyContent: "space-between" }}
-      >
-        <div style={{ position: "relative", width: "300px" }}>
-          <input
+    <div className="w-full p-4">
+      <div className="flex items-center justify-between py-4">
+        <div className="relative w-64">
+          <Input
             type="text"
-            placeholder="Search trains..."
+            placeholder="Tìm kiếm tàu..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            className={styles.customSearch}
+            className="pl-8 pr-4"
           />
-          <FiSearch
-            style={{
-              position: "absolute",
-              right: "20px",
-              top: "12px",
-            }}
-          />
+          <FiSearch className="absolute left-3 top-3 text-gray-400" />
         </div>
-        <Button
-          style={{ background: "#ff6600", fontWeight: "bold" }}
-          onClick={handleAddTrainButtonClick} // Trigger modal opening
-        >
-          + Add Train
-        </Button>
+        <Button onClick={() => setShowModalAdd(true)}>+ Thêm tàu mới</Button>
       </div>
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
+
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id}>
+                    {flexRender(
+                      header.column.columnDef.header,
+                      header.getContext()
+                    )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows?.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() && "selected"}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext()
                       )}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.map((row) => (
-            <TableRow key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <TableCell key={cell.id}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
+                  Không tìm thấy tàu nào
                 </TableCell>
-              ))}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      {/* Modal for Add, View, and Update Train */}
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
       {/* Modal Add Train */}
-      <Dialog
-        open={showModalAdd}
-        onOpenChange={(open) => setShowModalAdd(open)}
-      >
+      <Dialog open={showModalAdd} onOpenChange={setShowModalAdd}>
         <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Thêm Chuyến Tàu Mới</DialogTitle>
             <DialogDescription>
-              Add a new train by filling in the details below.
+              Thêm chuyến tàu mới bằng cách điền thông tin bên dưới
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
-            {/* First Column */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="trainID" className="text-right">
-                Train ID
+                Mã tàu
               </Label>
               <Input
                 id="trainID"
                 name="trainID"
-                value={newTrain.trainID}
+                type="number"
+                value={newTrain.trainID || ""}
                 onChange={handleInputChange}
                 className="col-span-3"
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="train_name" className="text-right">
-                Train Name
+                Tên tàu
               </Label>
               <Input
                 id="train_name"
                 name="train_name"
-                value={newTrain.train_name}
+                value={newTrain.train_name || ""}
+                onChange={handleInputChange}
+                className="col-span-3"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="total_seats" className="text-right">
+                Số ghế
+              </Label>
+              <Input
+                id="total_seats"
+                name="total_seats"
+                type="number"
+                value={newTrain.total_seats || ""}
                 onChange={handleInputChange}
                 className="col-span-3"
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="startStation" className="text-right">
-                Ga đi
+                Ga đi (ID)
               </Label>
               <Input
                 id="startStation"
                 name="startStation"
-                value={newTrain.startStation}
+                type="number"
+                value={newTrain.startStation || ""}
                 onChange={handleInputChange}
                 className="col-span-3"
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="endStation" className="text-right">
-                Ga đến
+                Ga đến (ID)
               </Label>
               <Input
                 id="endStation"
                 name="endStation"
-                value={newTrain.endStation}
+                type="number"
+                value={newTrain.endStation || ""}
                 onChange={handleInputChange}
                 className="col-span-3"
               />
@@ -597,7 +558,7 @@ export function DataTableTrain() {
                 id="departTime"
                 name="departTime"
                 type="time"
-                value={newTrain.departTime}
+                value={newTrain.departTime || ""}
                 onChange={handleInputChange}
                 className="col-span-3"
               />
@@ -610,35 +571,7 @@ export function DataTableTrain() {
                 id="arrivalTime"
                 name="arrivalTime"
                 type="time"
-                value={newTrain.arrivalTime}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-
-            {/* Second Column */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="price" className="text-right">
-                Giá vé
-              </Label>
-              <Input
-                id="price"
-                name="price"
-                type="number"
-                value={newTrain.price}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="total_seats" className="text-right">
-                Chỗ ngồi
-              </Label>
-              <Input
-                id="total_seats"
-                name="total_seats"
-                type="number"
-                value={newTrain.total_seats}
+                value={newTrain.arrivalTime || ""}
                 onChange={handleInputChange}
                 className="col-span-3"
               />
@@ -651,7 +584,7 @@ export function DataTableTrain() {
                 id="start_date"
                 name="start_date"
                 type="date"
-                value={newTrain.start_date}
+                value={newTrain.start_date || ""}
                 onChange={handleInputChange}
                 className="col-span-3"
               />
@@ -664,238 +597,143 @@ export function DataTableTrain() {
                 id="end_date"
                 name="end_date"
                 type="date"
-                value={newTrain.end_date}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="duration" className="text-right">
-                Thời gian hành trình (phút)
-              </Label>
-              <Input
-                id="duration"
-                name="duration"
-                type="number"
-                value={newTrain.duration}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="route_id" className="text-right">
-                Route ID
-              </Label>
-              <Input
-                id="route_id"
-                name="route_id"
-                value={newTrain.route_id}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="schedule_id" className="text-right">
-                Schedule ID
-              </Label>
-              <Input
-                id="schedule_id"
-                name="schedule_id"
-                value={newTrain.schedule_id}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="recurrence_id" className="text-right">
-                Recurrence ID
-              </Label>
-              <Input
-                id="recurrence_id"
-                name="recurrence_id"
-                value={newTrain.recurrence_id}
+                value={newTrain.end_date || ""}
                 onChange={handleInputChange}
                 className="col-span-3"
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="days_of_week" className="text-right">
-                Days of the Week
+                Ngày chạy (VD: 1111100)
               </Label>
               <Input
                 id="days_of_week"
                 name="days_of_week"
-                value={newTrain.days_of_week}
+                value={newTrain.days_of_week || ""}
                 onChange={handleInputChange}
                 className="col-span-3"
+                placeholder="1 = chạy, 0 = nghỉ (Thứ 2 -> Chủ nhật)"
               />
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => {}}>
-              Cancel
+            <Button variant="outline" onClick={() => setShowModalAdd(false)}>
+              Hủy
             </Button>
-            <Button onClick={handleAddTrain}>Thêm Chuyến Tàu</Button>
+            <Button onClick={handleAddTrain}>Thêm tàu</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
       {/* Modal View Train */}
-      <Dialog
-        open={showModalView}
-        onOpenChange={(open) => setShowModalView(open)}
-      >
+      <Dialog open={showModalView} onOpenChange={setShowModalView}>
         <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Chi tiết chuyến tàu</DialogTitle>
             <DialogDescription>
-              Thông tin chi tiết về chuyến tàu được chọn.
+              Thông tin chi tiết về chuyến tàu được chọn
             </DialogDescription>
           </DialogHeader>
 
-          {!selectedTrainView ? (
-            <div>Đang tải dữ liệu...</div>
-          ) : (
+          {selectedTrainView ? (
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Train ID:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.trainID || "N/A"}
+                <Label className="text-right font-bold">Mã tàu:</Label>
+                <span className="col-span-3">{selectedTrainView.trainID}</span>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right font-bold">Tên tàu:</Label>
+                <span className="col-span-3">
+                  {selectedTrainView.train_name}
                 </span>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Train Name:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.train_name || "N/A"}
+                <Label className="text-right font-bold">Số ghế:</Label>
+                <span className="col-span-3">
+                  {selectedTrainView.total_seats}
                 </span>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Ga đi:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.startStation || "N/A"}
+                <Label className="text-right font-bold">Ga đi:</Label>
+                <span className="col-span-3">
+                  {selectedTrainView.startStation}
                 </span>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Ga đến:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.endStation || "N/A"}
+                <Label className="text-right font-bold">Ga đến:</Label>
+                <span className="col-span-3">
+                  {selectedTrainView.endStation}
                 </span>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Giờ khởi hành:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.departTime || "N/A"}
+                <Label className="text-right font-bold">Giờ khởi hành:</Label>
+                <span className="col-span-3">
+                  {selectedTrainView.departTime}
                 </span>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Giờ đến:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.arrivalTime || "N/A"}
+                <Label className="text-right font-bold">Giờ đến:</Label>
+                <span className="col-span-3">
+                  {selectedTrainView.arrivalTime}
                 </span>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Giá vé:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.price !== undefined
-                    ? selectedTrainView.price
-                    : "N/A"}
+                <Label className="text-right font-bold">Giá vé:</Label>
+                <span className="col-span-3 font-medium">
+                  {new Intl.NumberFormat("vi-VN", {
+                    style: "currency",
+                    currency: "VND",
+                  }).format(selectedTrainView?.price || 0)}
                 </span>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Chỗ ngồi:
+                <Label className="text-right font-bold">
+                  Thời gian (phút):
                 </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.total_seats !== undefined
-                    ? selectedTrainView.total_seats
-                    : "N/A"}
+                <span className="col-span-3">{selectedTrainView.duration}</span>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label className="text-right font-bold">Ngày bắt đầu:</Label>
+                <span className="col-span-3">
+                  {selectedTrainView.start_date}
                 </span>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Ngày bắt đầu:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.start_date
-                    ? new Date(
-                        selectedTrainView.start_date
-                      ).toLocaleDateString()
-                    : "N/A"}
-                </span>
+                <Label className="text-right font-bold">Ngày kết thúc:</Label>
+                <span className="col-span-3">{selectedTrainView.end_date}</span>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Ngày kết thúc:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.end_date
-                    ? new Date(selectedTrainView.end_date).toLocaleDateString()
-                    : "N/A"}
+                <Label className="text-right font-bold">Ngày chạy:</Label>
+                <span className="col-span-3">
+                  {selectedTrainView.days_of_week}
                 </span>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold min-w-[120px]">
-                  Thời gian hành trình (phút):
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.duration !== undefined
-                    ? selectedTrainView.duration
-                    : "N/A"}
-                </span>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Route ID:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.route_id !== undefined
-                    ? selectedTrainView.route_id
-                    : "N/A"}
-                </span>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Schedule ID:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.schedule_id !== undefined
-                    ? selectedTrainView.schedule_id
-                    : "N/A"}
-                </span>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Recurrence ID:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.recurrence_id !== undefined
-                    ? selectedTrainView.recurrence_id
-                    : "N/A"}
-                </span>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label className="text-right font-bold whitespace-nowrap min-w-[120px]">
-                  Days of the Week:
-                </Label>
-                <span className="col-span-3 truncate">
-                  {selectedTrainView.days_of_week || "N/A"}
-                </span>
+              <div className="grid grid-cols-4 items-start gap-4">
+                <Label className="text-right font-bold">Chi tiết chặng:</Label>
+                <div className="col-span-3 space-y-2">
+                  {selectedTrainView.segments?.map((segment, index) => (
+                    <div key={index} className="border p-2 rounded">
+                      <div className="font-medium">
+                        {segment.from} → {segment.to}
+                      </div>
+                      <div className="text-sm">
+                        Giờ: {segment.departTime} - {segment.arrivalTime}
+                      </div>
+                      <div className="text-sm">
+                        Giá:{" "}
+                        {new Intl.NumberFormat("vi-VN", {
+                          style: "currency",
+                          currency: "VND",
+                        }).format(segment.price)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
+          ) : (
+            <div>Đang tải dữ liệu...</div>
           )}
 
           <DialogFooter>
@@ -903,216 +741,127 @@ export function DataTableTrain() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
       {/* Modal Update Train */}
-      <Dialog
-        open={showModalUpdate}
-        onOpenChange={(open) => setShowModalUpdate(open)}
-      >
+      <Dialog open={showModalUpdate} onOpenChange={setShowModalUpdate}>
         <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Cập Nhật Chuyến Tàu</DialogTitle>
-            <DialogDescription>
-              Cập nhật thông tin chuyến tàu bằng cách điền vào các trường dưới
-              đây.
-            </DialogDescription>
+            <DialogDescription>Cập nhật thông tin chuyến tàu</DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="trainID" className="text-right">
-                Train ID
-              </Label>
-              <Input
-                id="trainID"
-                name="trainID"
-                value={selectedTrainUpdate?.trainID || ""}
-                onChange={handleInputChange}
-                className="col-span-3"
-                disabled
-              />
+          {selectedTrainUpdate && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="trainID" className="text-right">
+                  Mã tàu
+                </Label>
+                <Input
+                  id="trainID"
+                  name="trainID"
+                  value={selectedTrainUpdate.trainID}
+                  className="col-span-3"
+                  disabled
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="train_name" className="text-right">
+                  Tên tàu
+                </Label>
+                <Input
+                  id="train_name"
+                  name="train_name"
+                  value={selectedTrainUpdate.train_name}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="total_seats" className="text-right">
+                  Số ghế
+                </Label>
+                <Input
+                  id="total_seats"
+                  name="total_seats"
+                  type="number"
+                  value={selectedTrainUpdate.total_seats}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="departTime" className="text-right">
+                  Giờ khởi hành
+                </Label>
+                <Input
+                  id="departTime"
+                  name="departTime"
+                  type="time"
+                  value={selectedTrainUpdate.departTime}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="arrivalTime" className="text-right">
+                  Giờ đến
+                </Label>
+                <Input
+                  id="arrivalTime"
+                  name="arrivalTime"
+                  type="time"
+                  value={selectedTrainUpdate.arrivalTime}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="start_date" className="text-right">
+                  Ngày bắt đầu
+                </Label>
+                <Input
+                  id="start_date"
+                  name="start_date"
+                  type="date"
+                  value={selectedTrainUpdate.start_date}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="end_date" className="text-right">
+                  Ngày kết thúc
+                </Label>
+                <Input
+                  id="end_date"
+                  name="end_date"
+                  type="date"
+                  value={selectedTrainUpdate.end_date}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="days_of_week" className="text-right">
+                  Ngày chạy (VD: 1111100)
+                </Label>
+                <Input
+                  id="days_of_week"
+                  name="days_of_week"
+                  value={selectedTrainUpdate.days_of_week}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                  placeholder="1 = chạy, 0 = nghỉ (Thứ 2 -> Chủ nhật)"
+                />
+              </div>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="train_name" className="text-right">
-                Train Name
-              </Label>
-              <Input
-                id="train_name"
-                name="train_name"
-                value={selectedTrainUpdate?.train_name || ""}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="startStation" className="text-right">
-                Ga đi
-              </Label>
-              <Input
-                id="startStation"
-                name="startStation"
-                value={selectedTrainUpdate?.startStation || ""}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="endStation" className="text-right">
-                Ga đến
-              </Label>
-              <Input
-                id="endStation"
-                name="endStation"
-                value={selectedTrainUpdate?.endStation || ""}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="departTime" className="text-right">
-                Giờ khởi hành
-              </Label>
-              <Input
-                id="departTime"
-                name="departTime"
-                type="time"
-                value={selectedTrainUpdate?.departTime || ""}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="arrivalTime" className="text-right">
-                Giờ đến
-              </Label>
-              <Input
-                id="arrivalTime"
-                name="arrivalTime"
-                type="time"
-                value={selectedTrainUpdate?.arrivalTime || ""}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="price" className="text-right">
-                Giá vé
-              </Label>
-              <Input
-                id="price"
-                name="price"
-                type="number"
-                value={selectedTrainUpdate?.price || 0}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="total_seats" className="text-right">
-                Chỗ ngồi
-              </Label>
-              <Input
-                id="total_seats"
-                name="total_seats"
-                type="number"
-                value={selectedTrainUpdate?.total_seats || 0}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="start_date" className="text-right">
-                Ngày bắt đầu
-              </Label>
-              <Input
-                id="start_date"
-                name="start_date"
-                type="date"
-                value={selectedTrainUpdate?.start_date || ""}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="end_date" className="text-right">
-                Ngày kết thúc
-              </Label>
-              <Input
-                id="end_date"
-                name="end_date"
-                type="date"
-                value={selectedTrainUpdate?.end_date || ""}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="duration" className="text-right">
-                Thời gian hành trình (phút)
-              </Label>
-              <Input
-                id="duration"
-                name="duration"
-                type="number"
-                value={selectedTrainUpdate?.duration || 0}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="route_id" className="text-right">
-                Route ID
-              </Label>
-              <Input
-                id="route_id"
-                name="route_id"
-                value={selectedTrainUpdate?.route_id || 0}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="schedule_id" className="text-right">
-                Schedule ID
-              </Label>
-              <Input
-                id="schedule_id"
-                name="schedule_id"
-                value={selectedTrainUpdate?.schedule_id || 0}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="recurrence_id" className="text-right">
-                Recurrence ID
-              </Label>
-              <Input
-                id="recurrence_id"
-                name="recurrence_id"
-                value={selectedTrainUpdate?.recurrence_id || 0}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="days_of_week" className="text-right">
-                Days of the Week
-              </Label>
-              <Input
-                id="days_of_week"
-                name="days_of_week"
-                value={selectedTrainUpdate?.days_of_week || ""}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-          </div>
+          )}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowModalUpdate(false)}>
-              Cancel
+              Hủy
             </Button>
-            <Button onClick={handleUpdateTrain}>Cập Nhật Chuyến Tàu</Button>
+            <Button onClick={handleUpdateTrain}>Cập nhật</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
