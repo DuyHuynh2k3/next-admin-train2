@@ -55,10 +55,10 @@ model ticket {
   payment_ticket                          payment_ticket[]
   refund                                  refund[]
   customer                                customer?              @relation(fields: [passport], references: [passport], onDelete: Cascade, map: "fk_passport")
+  seattrain                               seattrain?             @relation(fields: [seatID], references: [seatID], map: "fk_seatID")
   train                                   train                  @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "fk_trainID")
   station_ticket_from_station_idTostation station                @relation("ticket_from_station_idTostation", fields: [from_station_id], references: [station_id], onUpdate: Restrict, map: "ticket_ibfk_2")
   station_ticket_to_station_idTostation   station                @relation("ticket_to_station_idTostation", fields: [to_station_id], references: [station_id], onUpdate: Restrict, map: "ticket_ibfk_3")
-  seattrain                               seatrain?              @relation(fields: [seatID], references: [seatID], map: "fk_seatID")
 
   @@index([passport], map: "fk_ticket_customer")
   @@index([from_station_id], map: "from_station_id")
@@ -74,7 +74,7 @@ model train {
   total_seats   Int
   schedule      schedule[]
   seat_template seat_template[]
-  seatrain      seatrain[]
+  seattrain     seattrain[]
   ticket        ticket[]
   train_stop    train_stop[]
 }
@@ -112,7 +112,7 @@ model refund {
 
 model admin {
   adminID  Int     @id
-  account  String? @db.VarChar(50)
+  account  String? @unique(map: "account") @db.VarChar(50)
   password String? @db.VarChar(50)
 }
 
@@ -169,14 +169,14 @@ model seat_template {
   @@unique([trainID, coach, seat_number], map: "unique_template_seat")
 }
 
-model seatrain {
+model seattrain {
   seatID       Int      @id @default(autoincrement())
   trainID      Int
   travel_date  DateTime @db.Date
   coach        String   @db.VarChar(10)
   seat_number  String   @db.VarChar(10)
   is_available Boolean  @default(true)
-  train        train    @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "seatrain_ibfk_1")
+  train        train    @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "seattrain_ibfk_1")
   ticket       ticket[]
 
   @@unique([trainID, travel_date, coach, seat_number], map: "trainID")
