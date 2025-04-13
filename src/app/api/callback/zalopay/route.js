@@ -18,7 +18,7 @@ export async function POST(request) {
       result.return_code = -1;
       result.return_message = "mac not equal";
     } else {
-      const dataJson = JSON.parse(data);
+      console.log(dataJson);
       const payment_date = moment()
         .tz("Asia/Ho_Chi_Minh")
         .format("YYYY-MM-DD HH:mm:ss"); // Chuyển đổi thời gian sang múi giờ Việt Nam

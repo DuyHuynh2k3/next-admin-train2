@@ -192,7 +192,7 @@ export function DataTableTrain() {
       "days_of_week",
     ];
 
-    for (let field of requiredFields) {
+    for (const field of requiredFields) {
       if (!newTrain[field as keyof Train]) {
         alert(`Vui lòng điền đầy đủ thông tin cho trường ${field}!`);
         return;
