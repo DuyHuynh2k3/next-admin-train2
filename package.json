@@ -28,7 +28,6 @@
     "clsx": "^2.1.1",
     "context": "^3.0.33",
     "cors": "^2.8.5",
-    "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.475.0",
@@ -52,6 +51,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@types/node": "^20",
+    "@types/qs": "^6.9.18",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/styled-components": "^5.1.34",

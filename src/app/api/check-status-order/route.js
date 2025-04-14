@@ -1,9 +1,8 @@
-//src/app/api/check-status-order
 import { NextResponse } from "next/server";
-import CryptoJS from "crypto-js";
+import { createHmac } from "crypto"; // Sử dụng built-in crypto module
 import axios from "axios";
 import qs from "qs";
-import moment from "moment-timezone"; // Sử dụng moment-timezone
+import moment from "moment-timezone";
 
 const config = {
   app_id: process.env.ZALOPAY_APP_ID,
@@ -12,34 +11,53 @@ const config = {
 };
 
 export async function POST(request) {
-  const { app_trans_id } = await request.json();
-
-  const postData = {
-    app_id: config.app_id,
-    app_trans_id,
-  };
-
-  const data = `${postData.app_id}|${postData.app_trans_id}|${config.key1}`;
-  postData.mac = CryptoJS.HmacSHA256(data, config.key1).toString();
-
-  const postConfig = {
-    method: "post",
-    url: "https://sb-openapi.zalopay.vn/v2/query",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    data: qs.stringify(postData),
-  };
-
   try {
-    const result = await axios(postConfig);
+    const { app_trans_id } = await request.json();
+
+    // Validate input
+    if (!app_trans_id) {
+      return NextResponse.json(
+        { error: "app_trans_id is required" },
+        { status: 400 }
+      );
+    }
+
+    const postData = {
+      app_id: config.app_id,
+      app_trans_id,
+    };
+
+    // Tạo chuỗi dữ liệu để hash
+    const data = `${postData.app_id}|${postData.app_trans_id}|${config.key1}`;
+
+    // Tạo MAC sử dụng HMAC-SHA256
+    postData.mac = createHmac("sha256", config.key1).update(data).digest("hex");
+
+    // Gọi API Zalopay
+    const response = await axios({
+      method: "post",
+      url: "https://sb-openapi.zalopay.vn/v2/query",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      data: qs.stringify(postData),
+      timeout: 10000, // 10 seconds timeout
+    });
+
+    // Log thời gian thanh toán
     const payment_date = moment()
       .tz("Asia/Ho_Chi_Minh")
-      .format("YYYY-MM-DD HH:mm:ss"); // Chuyển đổi thời gian sang múi giờ Việt Nam
+      .format("YYYY-MM-DD HH:mm:ss");
     console.log("Payment date:", payment_date);
 
-    return NextResponse.json(result.data);
+    return NextResponse.json(response.data);
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Error in check-status-order:", error);
+
+    // Xử lý lỗi chi tiết hơn
+    const statusCode = error.response?.status || 500;
+    const errorMessage = error.response?.data?.message || error.message;
+
+    return NextResponse.json({ error: errorMessage }, { status: statusCode });
   }
 }
