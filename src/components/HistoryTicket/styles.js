@@ -1,6 +1,5 @@
 import styled from "styled-components";
 import { btnReset, v } from "../../styles/variables";
-import { lightTheme, darkTheme } from "../../styles/theme";
 
 export const SSSearch = styled.div`
   background: ${({ theme }) => theme.bgAlpha};

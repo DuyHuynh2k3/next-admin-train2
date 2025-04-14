@@ -7,7 +7,6 @@ import "./globals.css";
 import Layout from "../components/Layout/Layout";
 import { GlobalStyle } from "../styles/globalStyles";
 import { lightTheme, darkTheme } from "../styles/theme";
-import { useState } from "react";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({
@@ -20,7 +19,7 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const isDarkMode = false;
   const pathname = usePathname(); // Lấy đường dẫn hiện tại
 
   const isLoginPage = pathname.startsWith("/LoginTicket"); // Kiểm tra nếu là trang Login

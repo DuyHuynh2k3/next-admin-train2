@@ -21,7 +21,6 @@ export async function POST(req) {
   const {
     accessKey,
     secretKey,
-    orderInfo,
     partnerCode,
     redirectUrl,
     ipnUrl,

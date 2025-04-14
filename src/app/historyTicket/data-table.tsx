@@ -1,13 +1,12 @@
+// ./src/app/historyTicket/data-table.tsx
 "use client";
 
 import * as React from "react";
 import { FiSearch } from "react-icons/fi";
-import styles from "./Table.module.css";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogFooter,
-  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogDescription,
@@ -73,10 +72,8 @@ export function DataTableTicket() {
     React.useState(searchText);
   const [showModalView, setShowModalView] = React.useState(false);
   const [showModalUpdate, setShowModalUpdate] = React.useState(false);
-  const [page, setPage] = React.useState(1);
   const [limit, setLimit] = React.useState(25);
   const [showRequestedTickets, setShowRequestedTickets] = React.useState(false);
-
   const [selectedTicketView, setSelectedTicketView] =
     React.useState<Ticket | null>(null);
   const [selectedTicketUpdate, setSelectedTicketUpdate] =
@@ -85,7 +82,7 @@ export function DataTableTicket() {
   React.useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch(`/api/ticket?page=${page}&limit=${limit}`);
+        const res = await fetch(`/api/ticket?limit=${limit}`);
         if (!res.ok) {
           console.error("Failed to fetch tickets. Status:", res.status);
           throw new Error("Failed to fetch tickets");
@@ -95,8 +92,8 @@ export function DataTableTicket() {
       } catch (error) {
         console.error("Error fetching data:", error);
         setError(
-          `Failed to load data: ${
-            error instanceof Error ? error.message : "Unknown error"
+          `Không thể tải dữ liệu: ${
+            error instanceof Error ? error.message : "Lỗi không xác định"
           }`
         );
       } finally {
@@ -105,9 +102,8 @@ export function DataTableTicket() {
     };
 
     fetchData();
-  }, [page, limit]);
+  }, [limit]);
 
-  // Debounce search text
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchText(searchText);
@@ -116,7 +112,6 @@ export function DataTableTicket() {
     return () => clearTimeout(timer);
   }, [searchText]);
 
-  // Filter data based on debounced search text
   const filteredData = React.useMemo(() => {
     const lowercasedSearchText = debouncedSearchText.toLowerCase();
     return ticketData.filter((item) => {
@@ -158,7 +153,7 @@ export function DataTableTicket() {
         );
         setError(null);
       } catch (error) {
-        console.error("Error deleting ticket:", error);
+        console.error("Lỗi khi xóa vé:", error);
         setError(
           error instanceof Error ? error.message : "Có lỗi xảy ra khi xóa vé"
         );
@@ -198,12 +193,12 @@ export function DataTableTicket() {
       const formattedTicket = {
         ...selectedTicket,
         travel_date: formatDate(selectedTicket.travel_date),
-        price: formatCurrency(selectedTicket.price),
+        // Giữ price là number, không định dạng ở đây
       };
       setSelectedTicketView(formattedTicket);
       setShowModalView(true);
     } else {
-      setError("Ticket not found in local data");
+      setError("Không tìm thấy vé trong dữ liệu cục bộ");
     }
   };
 
@@ -219,7 +214,7 @@ export function DataTableTicket() {
 
   const handleUpdateTicket = async () => {
     if (!selectedTicketUpdate) {
-      alert("No ticket selected for update.");
+      alert("Không có vé nào được chọn để cập nhật.");
       return;
     }
 
@@ -244,7 +239,8 @@ export function DataTableTicket() {
         throw new Error(errorData.error || "Cập nhật vé thất bại");
       }
 
-      const data = await response.json();
+      const updatedTicket = await response.json();
+      console.log("Vé đã được cập nhật:", updatedTicket);
 
       setTicketData((prevRecords) =>
         prevRecords.map((ticket) =>
@@ -256,7 +252,7 @@ export function DataTableTicket() {
       setError(null);
       setShowModalUpdate(false);
     } catch (error) {
-      console.error("Error updating ticket:", error);
+      console.error("Lỗi khi cập nhật vé:", error);
       setError(
         error instanceof Error ? error.message : "Có lỗi xảy ra khi cập nhật vé"
       );
@@ -309,7 +305,7 @@ export function DataTableTicket() {
         let color = "";
         if (status === "Requested") color = "text-orange-500";
         if (status === "Refunded") color = "text-green-500";
-        return <span className={color}>{status || "None"}</span>;
+        return <span className={color}>{status || "Không có"}</span>;
       },
     },
     {
@@ -322,7 +318,7 @@ export function DataTableTicket() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
+                <span className="sr-only">Mở menu</span>
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -690,13 +686,13 @@ function RequestedTicketsTable() {
       try {
         const res = await fetch("/api/ticket?refund_status=Requested");
         if (!res.ok) {
-          throw new Error("Failed to fetch requested tickets");
+          throw new Error("Không thể lấy danh sách vé yêu cầu hoàn tiền");
         }
         const data = await res.json();
         setRequestedTickets(data);
       } catch (error) {
         setError(
-          error instanceof Error ? error.message : "Failed to load data"
+          error instanceof Error ? error.message : "Không thể tải dữ liệu"
         );
       } finally {
         setLoading(false);

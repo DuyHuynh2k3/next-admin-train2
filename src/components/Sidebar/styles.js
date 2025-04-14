@@ -1,8 +1,7 @@
 "use client";
 
 import styled from "styled-components";
-import { btnReset, v } from "../../styles/variables";
-import Link from "next/link";
+import { v } from "../../styles/variables";
 
 export const SSidebar = styled.div`
   width: 270px; /* Thay vì sử dụng biến v.sidebarWidth */

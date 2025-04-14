@@ -1,5 +1,3 @@
-// src/app/api/trains/route.js
-// src/app/api/trains/route.js
 import { PrismaClient } from "@prisma/client";
 import { NextResponse } from "next/server";
 
@@ -13,85 +11,6 @@ function formatTime(timeString) {
     return date;
   }
   return timeString;
-}
-
-// API endpoint mới để lấy chi tiết các chặng
-export async function GET_SEGMENTS(request) {
-  const { searchParams } = new URL(request.url);
-  const trainID = searchParams.get("trainID");
-
-  try {
-    const segments = await prisma.$queryRaw`
-      SELECT 
-        rs.segment_id,
-        t.trainID AS train_id,
-        t.train_name,
-        st1.station_name AS from_station,
-        st2.station_name AS to_station,
-        rs.base_price AS current_price,
-        TIME(ts1.departure_time) AS depart_time,
-        TIME(ts2.arrival_time) AS arrival_time,
-        rs.duration
-      FROM 
-        train t
-      JOIN 
-        train_stop ts1 ON t.trainID = ts1.trainID
-      JOIN 
-        train_stop ts2 ON t.trainID = ts2.trainID AND ts2.stop_order = ts1.stop_order + 1
-      JOIN 
-        route_segment rs ON rs.from_station_id = ts1.station_id AND rs.to_station_id = ts2.station_id
-      JOIN 
-        station st1 ON ts1.station_id = st1.station_id
-      JOIN 
-        station st2 ON ts2.station_id = st2.station_id
-      WHERE 
-        t.trainID = ${parseInt(trainID)}
-      ORDER BY 
-        ts1.stop_order
-    `;
-
-    return NextResponse.json(segments, { status: 200 });
-  } catch (error) {
-    console.error("Error fetching segments:", error);
-    return NextResponse.json(
-      { error: "Database query failed", details: error.message },
-      { status: 500 }
-    );
-  } finally {
-    await prisma.$disconnect();
-  }
-}
-
-// API endpoint mới để cập nhật giá vé chặng
-export async function PUT_SEGMENT_PRICE(request) {
-  try {
-    const { segment_id, new_price } = await request.json();
-
-    if (!segment_id || !new_price) {
-      return NextResponse.json(
-        { error: "Segment ID and new price are required" },
-        { status: 400 }
-      );
-    }
-
-    await prisma.route_segment.update({
-      where: { segment_id: parseInt(segment_id) },
-      data: { base_price: parseFloat(new_price) },
-    });
-
-    return NextResponse.json(
-      { message: "Segment price updated successfully" },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error("Error updating segment price:", error);
-    return NextResponse.json(
-      { error: "Failed to update segment price", details: error.message },
-      { status: 500 }
-    );
-  } finally {
-    await prisma.$disconnect();
-  }
 }
 
 export async function GET(request) {

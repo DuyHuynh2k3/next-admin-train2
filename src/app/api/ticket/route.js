@@ -140,6 +140,8 @@ export async function DELETE(request) {
       where: { ticket_id: parseInt(ticket_id) },
     });
 
+    console.log("Deleted ticket:", result);
+
     return new Response(
       JSON.stringify({ message: "Ticket deleted successfully" }),
       {

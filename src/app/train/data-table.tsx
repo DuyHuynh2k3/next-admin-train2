@@ -7,7 +7,6 @@ import { UpdateSegmentPrices } from "../../components/UpdateSegmentPrices/Update
 import {
   Dialog,
   DialogFooter,
-  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogDescription,
