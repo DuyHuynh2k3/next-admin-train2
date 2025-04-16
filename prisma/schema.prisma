@@ -17,11 +17,11 @@ model customer {
 }
 
 model schedule {
-  schedule_id      Int               @id
+  schedule_id      Int               @id @default(autoincrement())
   trainID          Int
   recurrence_id    Int?
-  departTime       DateTime          @db.DateTime(0)
-  arrivalTime      DateTime          @db.DateTime(0)
+  departTime       DateTime?         @db.DateTime(0)
+  arrivalTime      DateTime?         @db.DateTime(0)
   actual_departure DateTime?         @db.DateTime(0)
   actual_arrival   DateTime?         @db.DateTime(0)
   status           schedule_status?  @default(Scheduled)
@@ -30,7 +30,7 @@ model schedule {
 
   @@index([departTime], map: "idx_departure")
   @@index([recurrence_id], map: "recurrence_id")
-  @@index([trainID], map: "trainID")
+  @@index([trainID, departTime], map: "idx_schedule_train_date")
 }
 
 model ticket {
@@ -81,7 +81,7 @@ model train {
 }
 
 model train_recurrence {
-  recurrence_id Int        @id
+  recurrence_id Int        @id @default(autoincrement())
   start_date    DateTime   @db.Date
   end_date      DateTime   @db.Date
   days_of_week  String     @db.VarChar(7)
@@ -113,7 +113,7 @@ model refund {
 
 model admin {
   adminID  Int     @id
-  account  String? @unique(map: "account") @db.VarChar(50)
+  account  String? @db.VarChar(50)
   password String? @db.VarChar(50)
 }
 
@@ -165,6 +165,7 @@ model seat_template {
   coach       String                  @db.VarChar(50)
   seat_number String                  @db.VarChar(10)
   seat_type   seat_template_seat_type
+  floor       Int?
   train       train                   @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "seat_template_ibfk_1")
 
   @@unique([trainID, coach, seat_number], map: "unique_template_seat")
@@ -176,11 +177,13 @@ model seattrain {
   travel_date  DateTime @db.Date
   coach        String   @db.VarChar(10)
   seat_number  String   @db.VarChar(10)
+  seat_type    String?  @db.VarChar(20)
   is_available Boolean  @default(true)
   train        train    @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "seattrain_ibfk_1")
   ticket       ticket[]
 
   @@unique([trainID, travel_date, coach, seat_number], map: "trainID")
+  @@index([trainID, travel_date, is_available], map: "idx_seatrain_date")
 }
 
 enum ticket_payment_status {

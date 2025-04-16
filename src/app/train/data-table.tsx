@@ -43,13 +43,23 @@ import {
 import { toast } from "sonner";
 
 type Segment = {
-  from: string;
-  to: string;
-  price: number;
-  departTime: string;
-  arrivalTime: string;
   from_station_id: number;
   to_station_id: number;
+  base_price: number;
+  duration: number;
+  from?: string; // Tên ga đi (nếu có)
+  to?: string; // Tên ga đến (nếu có)
+  departTime?: string; // Giờ khởi hành của chặng
+  arrivalTime?: string; // Giờ đến của chặng
+  price?: number; // Giá vé của chặng
+};
+
+type Stop = {
+  station_id: number;
+  stop_order: number;
+  arrival_time?: string;
+  departure_time?: string;
+  stop_duration?: number;
 };
 
 type Train = {
@@ -69,6 +79,7 @@ type Train = {
   recurrence_id?: number;
   status?: string;
   segments: Segment[];
+  stops: Stop[];
 };
 
 export function DataTableTrain() {
@@ -81,13 +92,19 @@ export function DataTableTrain() {
   const [showModalView, setShowModalView] = React.useState(false);
   const [showModalUpdate, setShowModalUpdate] = React.useState(false);
 
-  const [newTrain, setNewTrain] = React.useState<Partial<Train>>({});
+  const [newTrain, setNewTrain] = React.useState<Partial<Train>>({
+    stops: [],
+    segments: [],
+  });
   const [selectedTrainView, setSelectedTrainView] =
     React.useState<Train | null>(null);
   const [selectedTrainUpdate, setSelectedTrainUpdate] =
     React.useState<Train | null>(null);
 
-  // Định nghĩa hàm fetchData ở cấp độ component
+  // State để quản lý stops và segments trong modal
+  const [newStop, setNewStop] = React.useState<Partial<Stop>>({});
+  const [newSegment, setNewSegment] = React.useState<Partial<Segment>>({});
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -104,12 +121,10 @@ export function DataTableTrain() {
     }
   };
 
-  // Sử dụng useEffect với fetchData
   React.useEffect(() => {
     fetchData();
   }, []);
 
-  // Debounce search text
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchText(searchText);
@@ -118,7 +133,6 @@ export function DataTableTrain() {
     return () => clearTimeout(timer);
   }, [searchText]);
 
-  // Filter data based on debounced search text
   const filteredData = React.useMemo(() => {
     const lowercasedSearchText = debouncedSearchText.toLowerCase();
     return trainData.filter((item) => {
@@ -151,10 +165,10 @@ export function DataTableTrain() {
         setTrainData((prevRecords) =>
           prevRecords.filter((train) => train.trainID !== trainID)
         );
-        alert("Chuyến tàu đã được xóa thành công!");
+        toast.success("Chuyến tàu đã được xóa thành công!");
       } catch (error) {
         console.error("Error deleting train:", error);
-        alert(
+        toast.error(
           "Có lỗi xảy ra khi xóa chuyến tàu: " +
             (error instanceof Error ? error.message : "")
         );
@@ -177,15 +191,79 @@ export function DataTableTrain() {
     }
   };
 
+  const handleStopInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setNewStop((prevStop) => ({
+      ...prevStop,
+      [name]: value,
+    }));
+  };
+
+  const handleSegmentInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setNewSegment((prevSegment) => ({
+      ...prevSegment,
+      [name]: value,
+    }));
+  };
+
+  const addStop = () => {
+    if (!newStop.station_id || isNaN(newStop.station_id)) {
+      toast.error("Vui lòng nhập ID ga hợp lệ");
+      return;
+    }
+
+    setNewTrain((prevTrain) => ({
+      ...prevTrain,
+      stops: [
+        ...(prevTrain.stops || []),
+        {
+          station_id: parseInt(newStop.station_id!.toString()),
+          stop_order: (prevTrain.stops?.length || 0) + 1,
+          arrival_time: newStop.arrival_time || undefined,
+          departure_time: newStop.departure_time || undefined,
+          stop_duration: newStop.stop_duration || 0,
+        },
+      ],
+    }));
+    setNewStop({});
+    toast.success("Đã thêm ga thành công!");
+  };
+
+  const addSegment = () => {
+    if (
+      !newSegment.from_station_id ||
+      !newSegment.to_station_id ||
+      isNaN(newSegment.base_price!) ||
+      isNaN(newSegment.duration!)
+    ) {
+      toast.error("Vui lòng nhập đầy đủ thông tin chặng hợp lệ");
+      return;
+    }
+
+    setNewTrain((prevTrain) => ({
+      ...prevTrain,
+      segments: [
+        ...(prevTrain.segments || []),
+        {
+          from_station_id: parseInt(newSegment.from_station_id!.toString()),
+          to_station_id: parseInt(newSegment.to_station_id!.toString()),
+          base_price: parseFloat(newSegment.base_price!.toString()),
+          duration: parseInt(newSegment.duration!.toString()),
+        },
+      ],
+    }));
+    setNewSegment({});
+    toast.success("Đã thêm chặng thành công!");
+  };
+
   const handleAddTrain = async () => {
     const requiredFields = [
       "trainID",
       "train_name",
-      "startStation",
-      "endStation",
+      "total_seats",
       "departTime",
       "arrivalTime",
-      "total_seats",
       "start_date",
       "end_date",
       "days_of_week",
@@ -193,9 +271,22 @@ export function DataTableTrain() {
 
     for (const field of requiredFields) {
       if (!newTrain[field as keyof Train]) {
-        alert(`Vui lòng điền đầy đủ thông tin cho trường ${field}!`);
+        toast.error(`Vui lòng điền đầy đủ thông tin cho trường ${field}!`);
         return;
       }
+    }
+
+    if (!newTrain.stops || newTrain.stops.length < 2) {
+      toast.error("Phải có ít nhất 2 ga!");
+      return;
+    }
+
+    if (
+      !newTrain.segments ||
+      newTrain.segments.length !== newTrain.stops.length - 1
+    ) {
+      toast.error("Số chặng phải bằng số ga trừ 1!");
+      return;
     }
 
     try {
@@ -206,27 +297,13 @@ export function DataTableTrain() {
           trainID: parseInt(newTrain.trainID?.toString() || "0"),
           train_name: newTrain.train_name,
           total_seats: parseInt(newTrain.total_seats?.toString() || "0"),
-          startStation: newTrain.startStation,
-          endStation: newTrain.endStation,
           departTime: newTrain.departTime,
           arrivalTime: newTrain.arrivalTime,
           start_date: newTrain.start_date,
           end_date: newTrain.end_date,
           days_of_week: newTrain.days_of_week,
-          stops: [
-            {
-              station_id: newTrain.startStation,
-              arrival_time: "00:00",
-              departure_time: newTrain.departTime,
-              stop_duration: 0,
-            },
-            {
-              station_id: newTrain.endStation,
-              arrival_time: newTrain.arrivalTime,
-              departure_time: "00:00",
-              stop_duration: 0,
-            },
-          ],
+          stops: newTrain.stops,
+          segments: newTrain.segments,
         }),
       });
 
@@ -234,15 +311,15 @@ export function DataTableTrain() {
 
       if (response.ok) {
         setTrainData((prevRecords) => [...prevRecords, data]);
-        alert("Chuyến tàu đã được thêm thành công!");
+        toast.success("Chuyến tàu đã được thêm thành công!");
         setShowModalAdd(false);
-        setNewTrain({});
+        setNewTrain({ stops: [], segments: [] });
       } else {
-        alert(data.error || "Thêm chuyến tàu thất bại");
+        toast.error(data.error || "Thêm chuyến tàu thất bại");
       }
     } catch (error) {
       console.error("Error adding train:", error);
-      alert("Có lỗi xảy ra khi thêm chuyến tàu");
+      toast.error("Có lỗi xảy ra khi thêm chuyến tàu");
     }
   };
 
@@ -256,7 +333,7 @@ export function DataTableTrain() {
       }
     } catch (error) {
       console.error("Lỗi khi xem chuyến tàu:", error);
-      alert("Có lỗi xảy ra khi xem chuyến tàu");
+      toast.error("Có lỗi xảy ra khi xem chuyến tàu");
     }
   };
 
@@ -270,7 +347,7 @@ export function DataTableTrain() {
 
   const handleUpdateTrain = async () => {
     if (!selectedTrainUpdate) {
-      alert("No train selected for update.");
+      toast.error("No train selected for update.");
       return;
     }
 
@@ -304,14 +381,14 @@ export function DataTableTrain() {
               : train
           )
         );
-        alert("Chuyến tàu đã được cập nhật thành công!");
+        toast.success("Chuyến tàu đã được cập nhật thành công!");
         setShowModalUpdate(false);
       } else {
-        alert(data.error || "Cập nhật chuyến tàu thất bại");
+        toast.error(data.error || "Cập nhật chuyến tàu thất bại");
       }
     } catch (error) {
       console.error("Error updating train:", error);
-      alert("Có lỗi xảy ra khi cập nhật chuyến tàu");
+      toast.error("Có lỗi xảy ra khi cập nhật chuyến tàu");
     }
   };
 
@@ -476,7 +553,7 @@ export function DataTableTrain() {
 
       {/* Modal Add Train */}
       <Dialog open={showModalAdd} onOpenChange={setShowModalAdd}>
-        <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[800px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Thêm Chuyến Tàu Mới</DialogTitle>
             <DialogDescription>
@@ -519,32 +596,6 @@ export function DataTableTrain() {
                 name="total_seats"
                 type="number"
                 value={newTrain.total_seats || ""}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="startStation" className="text-right">
-                Ga đi (ID)
-              </Label>
-              <Input
-                id="startStation"
-                name="startStation"
-                type="number"
-                value={newTrain.startStation || ""}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="endStation" className="text-right">
-                Ga đến (ID)
-              </Label>
-              <Input
-                id="endStation"
-                name="endStation"
-                type="number"
-                value={newTrain.endStation || ""}
                 onChange={handleInputChange}
                 className="col-span-3"
               />
@@ -613,6 +664,159 @@ export function DataTableTrain() {
                 className="col-span-3"
                 placeholder="1 = chạy, 0 = nghỉ (Thứ 2 -> Chủ nhật)"
               />
+            </div>
+
+            {/* Phần thêm ga (stops) */}
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold mb-2">Thêm Ga</h3>
+              <div className="grid grid-cols-4 items-center gap-4 mb-4">
+                <Label htmlFor="station_id" className="text-right">
+                  ID Ga
+                </Label>
+                <Input
+                  id="station_id"
+                  name="station_id"
+                  type="number"
+                  value={newStop.station_id || ""}
+                  onChange={handleStopInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4 mb-4">
+                <Label htmlFor="arrival_time" className="text-right">
+                  Giờ đến
+                </Label>
+                <Input
+                  id="arrival_time"
+                  name="arrival_time"
+                  type="time"
+                  value={newStop.arrival_time || ""}
+                  onChange={handleStopInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4 mb-4">
+                <Label htmlFor="departure_time" className="text-right">
+                  Giờ đi
+                </Label>
+                <Input
+                  id="departure_time"
+                  name="departure_time"
+                  type="time"
+                  value={newStop.departure_time || ""}
+                  onChange={handleStopInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4 mb-4">
+                <Label htmlFor="stop_duration" className="text-right">
+                  Thời gian dừng (phút)
+                </Label>
+                <Input
+                  id="stop_duration"
+                  name="stop_duration"
+                  type="number"
+                  value={newStop.stop_duration || ""}
+                  onChange={handleStopInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <Button onClick={addStop} className="mt-2">
+                Thêm Ga
+              </Button>
+
+              {/* Hiển thị danh sách ga đã thêm */}
+              {newTrain.stops && newTrain.stops.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="font-medium">Danh sách ga:</h4>
+                  <ul className="list-disc pl-5">
+                    {newTrain.stops.map((stop, index) => (
+                      <li key={index}>
+                        Ga {stop.station_id} (Thứ tự: {stop.stop_order}, Đến:{" "}
+                        {stop.arrival_time || "--:--"}, Đi:{" "}
+                        {stop.departure_time || "--:--"}, Dừng:{" "}
+                        {stop.stop_duration} phút)
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {/* Phần thêm chặng (segments) */}
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold mb-2">Thêm Chặng</h3>
+              <div className="grid grid-cols-4 items-center gap-4 mb-4">
+                <Label htmlFor="from_station_id" className="text-right">
+                  ID Ga đi
+                </Label>
+                <Input
+                  id="from_station_id"
+                  name="from_station_id"
+                  type="number"
+                  value={newSegment.from_station_id || ""}
+                  onChange={handleSegmentInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4 mb-4">
+                <Label htmlFor="to_station_id" className="text-right">
+                  ID Ga đến
+                </Label>
+                <Input
+                  id="to_station_id"
+                  name="to_station_id"
+                  type="number"
+                  value={newSegment.to_station_id || ""}
+                  onChange={handleSegmentInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4 mb-4">
+                <Label htmlFor="base_price" className="text-right">
+                  Giá cơ bản (VND)
+                </Label>
+                <Input
+                  id="base_price"
+                  name="base_price"
+                  type="number"
+                  value={newSegment.base_price || ""}
+                  onChange={handleSegmentInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4 mb-4">
+                <Label htmlFor="duration" className="text-right">
+                  Thời gian (phút)
+                </Label>
+                <Input
+                  id="duration"
+                  name="duration"
+                  type="number"
+                  value={newSegment.duration || ""}
+                  onChange={handleSegmentInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <Button onClick={addSegment} className="mt-2">
+                Thêm Chặng
+              </Button>
+
+              {/* Hiển thị danh sách chặng đã thêm */}
+              {newTrain.segments && newTrain.segments.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="font-medium">Danh sách chặng:</h4>
+                  <ul className="list-disc pl-5">
+                    {newTrain.segments.map((segment, index) => (
+                      <li key={index}>
+                        {segment.from_station_id} → {segment.to_station_id}{" "}
+                        (Giá: {segment.base_price} VND, Thời gian:{" "}
+                        {segment.duration} phút)
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
 
@@ -711,23 +915,32 @@ export function DataTableTrain() {
               <div className="grid grid-cols-4 items-start gap-4">
                 <Label className="text-right font-bold">Chi tiết chặng:</Label>
                 <div className="col-span-3 space-y-2">
-                  {selectedTrainView.segments?.map((segment, index) => (
-                    <div key={index} className="border p-2 rounded">
-                      <div className="font-medium">
-                        {segment.from} → {segment.to}
+                  {selectedTrainView?.segments?.length > 0 ? (
+                    selectedTrainView.segments.map((segment, index) => (
+                      <div key={index} className="border p-2 rounded">
+                        <div className="font-medium">
+                          {segment.from || `Ga ${segment.from_station_id}`} →{" "}
+                          {segment.to || `Ga ${segment.to_station_id}`}
+                        </div>
+                        <div className="text-sm">
+                          Giờ: {segment.departTime || "--:--"} -{" "}
+                          {segment.arrivalTime || "--:--"}
+                        </div>
+                        <div className="text-sm">
+                          Giá:{" "}
+                          {new Intl.NumberFormat("vi-VN", {
+                            style: "currency",
+                            currency: "VND",
+                          }).format(segment.price || segment.base_price || 0)}
+                        </div>
+                        <div className="text-sm">
+                          Thời gian: {segment.duration} phút
+                        </div>
                       </div>
-                      <div className="text-sm">
-                        Giờ: {segment.departTime} - {segment.arrivalTime}
-                      </div>
-                      <div className="text-sm">
-                        Giá:{" "}
-                        {new Intl.NumberFormat("vi-VN", {
-                          style: "currency",
-                          currency: "VND",
-                        }).format(segment.price)}
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <div>Không có thông tin chặng</div>
+                  )}
                 </div>
               </div>
             </div>

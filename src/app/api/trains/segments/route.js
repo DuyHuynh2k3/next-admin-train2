@@ -1,4 +1,3 @@
-// Thêm route API mới trong app/api/trains/route/segments/route.js
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
@@ -10,7 +9,7 @@ export async function GET(request) {
 
   if (!trainID) {
     return NextResponse.json(
-      { error: "Thiếu tham số trainID" },
+      { error: "Train ID is required" },
       { status: 400 }
     );
   }
@@ -47,9 +46,9 @@ export async function GET(request) {
 
     return NextResponse.json(segments);
   } catch (error) {
-    console.error("Lỗi khi lấy dữ liệu chặng đường:", error);
+    console.error("Error fetching segments:", error);
     return NextResponse.json(
-      { error: "Lỗi khi lấy dữ liệu chặng đường", details: error.message },
+      { error: "Failed to fetch segments", details: error.message },
       { status: 500 }
     );
   } finally {
@@ -63,33 +62,27 @@ export async function PUT(request) {
 
     if (!segment_id || isNaN(new_price) || new_price < 0) {
       return NextResponse.json(
-        { error: "ID chặng đường hoặc giá vé không hợp lệ" },
+        { error: "Invalid segment ID or price" },
         { status: 400 }
       );
     }
-
-    // Thêm console.log để debug
-    console.log(`Updating segment ${segment_id} with price ${new_price}`);
 
     const updatedSegment = await prisma.route_segment.update({
       where: { segment_id: parseInt(segment_id) },
       data: { base_price: parseFloat(new_price) },
     });
 
-    console.log("Update successful:", updatedSegment);
-
     return NextResponse.json({
-      message: "Cập nhật giá vé thành công",
+      message: "Price updated successfully",
       data: updatedSegment,
     });
   } catch (error) {
-    console.error("Lỗi khi cập nhật giá vé:", error);
+    console.error("Error updating segment price:", error);
     return NextResponse.json(
-      {
-        error: "Lỗi khi cập nhật giá vé",
-        details: error.message,
-      },
+      { error: "Failed to update price", details: error.message },
       { status: 500 }
     );
+  } finally {
+    await prisma.$disconnect();
   }
 }
