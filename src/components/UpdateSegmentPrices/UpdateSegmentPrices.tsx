@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,7 +11,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -46,7 +45,7 @@ export function UpdateSegmentPrices({
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const fetchSegments = async () => {
+  const fetchSegments = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/trains/segments?trainID=${trainID}`);
@@ -59,7 +58,7 @@ export function UpdateSegmentPrices({
     } finally {
       setLoading(false);
     }
-  };
+  }, [trainID]);
 
   const handlePriceChange = (segmentId: number, value: string) => {
     const numericValue = parseFloat(value);
@@ -107,7 +106,6 @@ export function UpdateSegmentPrices({
 
       await Promise.all(updatePromises);
 
-      // Gọi hàm onUpdate và đợi nó hoàn thành
       if (onUpdate) {
         await Promise.resolve(onUpdate());
       }
@@ -130,7 +128,7 @@ export function UpdateSegmentPrices({
     if (open) {
       fetchSegments();
     }
-  }, [open]);
+  }, [open, fetchSegments]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

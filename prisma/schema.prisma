@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
 }
 
 model customer {
@@ -52,9 +53,12 @@ model ticket {
   refund_status                           ticket_refund_status?  @default(None)
   passenger_type                          ticket_passenger_type? @default(Adult)
   journey_segments                        String?                @db.LongText
+  seatType                                String?                @db.VarChar(50)
+  tripType                                String?                @default("oneway") @db.VarChar(10)
   payment_ticket                          payment_ticket[]
   refund                                  refund[]
   customer                                customer?              @relation(fields: [passport], references: [passport], onDelete: Cascade, map: "fk_passport")
+  seattrain                               seattrain?             @relation(fields: [seatID], references: [seatID], map: "fk_seatID")
   train                                   train                  @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "fk_trainID")
   station_ticket_from_station_idTostation station                @relation("ticket_from_station_idTostation", fields: [from_station_id], references: [station_id], onUpdate: Restrict, map: "ticket_ibfk_2")
   station_ticket_to_station_idTostation   station                @relation("ticket_to_station_idTostation", fields: [to_station_id], references: [station_id], onUpdate: Restrict, map: "ticket_ibfk_3")
@@ -79,7 +83,7 @@ model train {
 }
 
 model train_recurrence {
-  recurrence_id Int        @id
+  recurrence_id Int        @id @default(autoincrement())
   start_date    DateTime   @db.Date
   end_date      DateTime   @db.Date
   days_of_week  String     @db.VarChar(7)
@@ -178,27 +182,26 @@ model seattrain {
   seat_type    String?  @db.VarChar(20)
   is_available Boolean  @default(true)
   train        train    @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "seattrain_ibfk_1")
+  ticket       ticket[]
 
   @@unique([trainID, travel_date, coach, seat_number], map: "trainID")
   @@index([trainID, travel_date, is_available], map: "idx_seatrain_date")
 }
 
 model blog {
-  id         Int       @id @default(autoincrement())
-  title      String    @db.VarChar(255)
-  content    String    @db.Text
-  categoryId Int?
-  createdAt  DateTime  @default(now()) @db.Timestamp(0)
-  imageUrl   String?   @db.VarChar(255)
-  category   category? @relation(fields: [categoryId], references: [id], onUpdate: Restrict, map: "blog_ibfk_1")
+  id         Int      @id @default(autoincrement())
+  title      String   @db.VarChar(255)
+  content    String   @db.Text
+  createdAt  DateTime @default(now()) @db.DateTime(0)
+  imageUrls  String?  @db.LongText
+  categoryId Int
 
-  @@index([categoryId], map: "categoryId")
+  @@index([categoryId], map: "idx_categoryId")
 }
 
 model category {
   id   Int    @id @default(autoincrement())
   name String @unique(map: "name") @db.VarChar(255)
-  blog blog[]
 }
 
 enum ticket_payment_status {

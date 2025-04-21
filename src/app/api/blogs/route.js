@@ -22,7 +22,7 @@ export async function GET() {
 // POST - Thêm bài viết mới
 export async function POST(request) {
   try {
-    const { title, content, categoryId, imageUrl } = await request.json();
+    const { title, content, categoryId, imageUrls } = await request.json();
 
     if (!title || !content || !categoryId) {
       return NextResponse.json(
@@ -31,8 +31,16 @@ export async function POST(request) {
       );
     }
 
+    // Nếu imageUrls là mảng rỗng, set nó thành null
+    const finalImageUrls = imageUrls && imageUrls.length > 0 ? imageUrls : null;
+
     const newBlog = await prisma.blog.create({
-      data: { title, content, categoryId, imageUrl },
+      data: {
+        title,
+        content,
+        categoryId,
+        imageUrls: finalImageUrls, // Sử dụng biến đã xử lý
+      },
     });
 
     return NextResponse.json(newBlog);
@@ -45,14 +53,15 @@ export async function POST(request) {
   }
 }
 
+
 // PUT - Cập nhật bài viết
 export async function PUT(request) {
   try {
-    const { id, title, content, categoryId, imageUrl } = await request.json();
+    const { id, title, content, categoryId, imageUrls } = await request.json();
 
     const updatedBlog = await prisma.blog.update({
       where: { id },
-      data: { title, content, categoryId, imageUrl },
+      data: { title, content, categoryId, imageUrls },
     });
 
     return NextResponse.json(updatedBlog);

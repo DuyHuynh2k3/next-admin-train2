@@ -1,5 +1,4 @@
 import prisma from "@/lib/prisma"; // Import Prisma Client từ file cấu hình
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 export async function POST(req) {

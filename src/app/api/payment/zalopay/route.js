@@ -1,8 +1,7 @@
-//src/app/api/payment/zalopay
 import { NextResponse } from "next/server";
-import CryptoJS from "crypto-js";
 import axios from "axios";
-import moment from "moment-timezone"; // Sử dụng moment-timezone
+import moment from "moment-timezone";
+import crypto from "crypto"; // Sử dụng module crypto của Node.js thay vì crypto-js
 
 const config = {
   app_id: process.env.ZALOPAY_APP_ID,
@@ -12,37 +11,62 @@ const config = {
 };
 
 export async function POST(request) {
-  const { amount, orderId, orderInfo } = await request.json();
-  const embed_data = {
-    redirecturl: "http://localhost:3001/infoseat",
-  };
-
-  const items = [];
-  const transID = Math.floor(Math.random() * 1000000);
-
-  // Sử dụng moment-timezone để xử lý thời gian
-  const app_time = moment().tz("Asia/Ho_Chi_Minh").valueOf(); // Lấy thời gian hiện tại theo múi giờ Việt Nam
-
-  const order = {
-    app_id: config.app_id,
-    app_trans_id: `${moment().format("YYMMDD")}_${transID}`,
-    app_user: "user123",
-    app_time: app_time, // Sử dụng thời gian đã chuyển đổi
-    item: JSON.stringify(items),
-    embed_data: JSON.stringify(embed_data),
-    amount: amount,
-    callback_url: "https://b074-1-53-37-194.ngrok-free.app/callback",
-    description: `Lazada - Payment for the order #${transID}`,
-    bank_code: "",
-  };
-
-  const data = `${config.app_id}|${order.app_trans_id}|${order.app_user}|${order.amount}|${order.app_time}|${order.embed_data}|${order.item}`;
-  order.mac = CryptoJS.HmacSHA256(data, config.key1).toString();
-
   try {
+    const { amount, orderId, orderInfo } = await request.json();
+
+    // Kiểm tra dữ liệu đầu vào
+    if (!amount || isNaN(amount) || amount <= 0) {
+      return NextResponse.json(
+        { error: "Số tiền hợp lệ và lớn hơn 0 là bắt buộc" },
+        { status: 400 }
+      );
+    }
+
+    // Kiểm tra biến môi trường
+    if (!config.app_id || !config.key1) {
+      return NextResponse.json(
+        { error: "Lỗi cấu hình server: Thiếu thông tin xác thực ZaloPay" },
+        { status: 500 }
+      );
+    }
+
+    const embed_data = {
+      redirecturl: "http://localhost:3001/infoseat",
+    };
+    const items = [];
+    const transID = orderId || Math.floor(Math.random() * 1000000);
+    const app_trans_id = `${moment().format("YYMMDD")}_${transID}`;
+
+    const order = {
+      app_id: config.app_id,
+      app_trans_id,
+      app_user: "user123",
+      app_time: moment().tz("Asia/Ho_Chi_Minh").valueOf(),
+      item: JSON.stringify(items),
+      embed_data: JSON.stringify(embed_data),
+      amount: parseInt(amount),
+      callback_url:
+        "https://b074-1-53-37-194.ngrok-free.app/api/callback/zalopay",
+      description: orderInfo || `Thanh toán cho đơn hàng #${transID}`,
+      bank_code: "",
+    };
+
+    // Tạo chuỗi dữ liệu cho HMAC
+    const data = `${config.app_id}|${order.app_trans_id}|${order.app_user}|${order.amount}|${order.app_time}|${order.embed_data}|${order.item}`;
+    order.mac = crypto
+      .createHmac("sha256", config.key1)
+      .update(data)
+      .digest("hex");
+
+    // Gửi yêu cầu đến ZaloPay
     const result = await axios.post(config.endpoint, null, { params: order });
-    return NextResponse.json(result.data);
+
+    return NextResponse.json(result.data, { status: 200 });
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Lỗi khi xử lý thanh toán ZaloPay:", error);
+    return NextResponse.json(
+      { error: "Xử lý thanh toán thất bại", details: error.message },
+      { status: 500 }
+    );
   }
 }

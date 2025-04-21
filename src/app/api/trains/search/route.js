@@ -3,116 +3,158 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+// GET /api/trains/search
 export async function GET(req) {
-  try {
-    const queryParams = req.nextUrl.searchParams;
-    const departureStation = queryParams.get("departureStation");
-    const arrivalStation = queryParams.get("arrivalStation");
-    const departureDate = queryParams.get("departureDate");
+  const queryParams = req.nextUrl.searchParams;
+  const departureStation = queryParams.get("departureStation");
+  const arrivalStation = queryParams.get("arrivalStation");
+  const departureDate = queryParams.get("departureDate");
+  const returnDate = queryParams.get("returnDate"); // 👈 thêm dòng này
 
-    if (!departureStation || !arrivalStation || !departureDate) {
-      return NextResponse.json(
+  if (!departureStation || !arrivalStation || !departureDate) {
+    return NextResponse.json(
+      {
+        error: "Vui lòng cung cấp ga đi, ga đến và ngày đi.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const parseDateRange = (dateStr) => {
+    const start = new Date(dateStr);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(dateStr);
+    end.setHours(23, 59, 59, 999);
+
+    return { start, end };
+  };
+
+  const { start: startGo, end: endGo } = parseDateRange(departureDate);
+
+  // Tìm chuyến đi (chiều đi)
+  const outboundTrains = await prisma.train.findMany({
+    where: {
+      AND: [
         {
-          error: "Vui lòng cung cấp đủ thông tin về ga đi, ga đến và ngày đi.",
+          train_stop: {
+            some: { station: { station_name: departureStation } },
+          },
         },
-        { status: 400 }
-      );
-    }
+        {
+          train_stop: {
+            some: { station: { station_name: arrivalStation } },
+          },
+        },
+        {
+          schedule: {
+            some: {
+              departTime: {
+                gte: startGo,
+                lte: endGo,
+              },
+            },
+          },
+        },
+      ],
+    },
+    include: {
+      train_stop: { include: { station: true } },
+      schedule: {
+        where: {
+          departTime: {
+            gte: startGo,
+            lte: endGo,
+          },
+        },
+      },
+    },
+  });
 
-    const formattedDate = new Date(departureDate);
-    if (isNaN(formattedDate)) {
-      return NextResponse.json(
-        { error: "Ngày đi không hợp lệ." },
-        { status: 400 }
-      );
-    }
+  const validOutbound = outboundTrains.filter((train) => {
+    const stops = train.train_stop;
+  
+    const dStop = stops.find((s) => s.station.station_name === departureStation);
+    const aStop = stops.find((s) => s.station.station_name === arrivalStation);
+  
+    if (!dStop || !aStop) return false;
+  
+    // Đảm bảo chiều đi đúng (ga đến sau ga đi)
+    if (aStop.stop_order <= dStop.stop_order) return false;
+  
+    // Kiểm tra xem có ga nào sau ga đến không — nếu có thì loại
+    const hasStopAfterArrival = stops.some(
+      (s) => s.stop_order > aStop.stop_order
+    );
+    if (hasStopAfterArrival) return false;
+  
+    return true;
+  });
+  
 
-    // Tính khoảng thời gian từ 00:00 đến 23:59 cùng ngày
-    const startOfDay = new Date(departureDate);
-    startOfDay.setHours(0, 0, 0, 0);
+  // Nếu có returnDate, xử lý chiều về
+  let validReturn = [];
 
-    const endOfDay = new Date(departureDate);
-    endOfDay.setHours(23, 59, 59, 999);
+  if (returnDate) {
+    const { start: startReturn, end: endReturn } = parseDateRange(returnDate);
 
-    // Lấy tất cả chuyến tàu có 2 ga xuất hiện trong danh sách điểm dừng và lịch chạy đúng ngày
-    const matchedTrains = await prisma.train.findMany({
+    const returnTrains = await prisma.train.findMany({
       where: {
         train_stop: {
-          some: {
-            station: { station_name: departureStation },
-          },
+          some: { station: { station_name: arrivalStation } },
         },
         AND: {
           train_stop: {
-            some: {
-              station: { station_name: arrivalStation },
-            },
+            some: { station: { station_name: departureStation } },
           },
         },
         schedule: {
           some: {
             departTime: {
-              gte: startOfDay,
-              lte: endOfDay,
+              gte: startReturn,
+              lte: endReturn,
             },
           },
         },
       },
       include: {
-        train_stop: {
-          include: {
-            station: true,
-          },
-        },
+        train_stop: { include: { station: true } },
         schedule: {
           where: {
             departTime: {
-              gte: startOfDay,
-              lte: endOfDay,
+              gte: startReturn,
+              lte: endReturn,
             },
           },
         },
       },
     });
-    
 
-    // Lọc lại để đảm bảo thứ tự ga đến phải sau ga đi
-    const validTrains = matchedTrains.filter((train) => {
+    validReturn = returnTrains.filter((train) => {
       const stops = train.train_stop;
-
-      const departureStop = stops.find(
-        (stop) => stop.station.station_name === departureStation
-      );
-      const arrivalStop = stops.find(
-        (stop) => stop.station.station_name === arrivalStation
-      );
-
-      return (
-        departureStop &&
-        arrivalStop &&
-        arrivalStop.stop_order > departureStop.stop_order
-      );
+      const dStop = stops.find((s) => s.station.station_name === arrivalStation);
+      const aStop = stops.find((s) => s.station.station_name === departureStation);
+      return dStop && aStop && aStop.stop_order > dStop.stop_order;
     });
-
-    const response = NextResponse.json(validTrains, { status: 200 });
-    response.headers.set("Access-Control-Allow-Origin", "*");
-    response.headers.set(
-      "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS"
-    );
-    response.headers.set(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization"
-    );
-
-    return response;
-  } catch (error) {
-    console.error("Lỗi khi tìm kiếm chuyến tàu:", error);
-    return NextResponse.json(
-      { error: "Lỗi khi tìm kiếm chuyến tàu", details: error.message },
-      { status: 500 }
-    );
-  } finally {
-    await prisma.$disconnect();
   }
+
+  const response = NextResponse.json(
+    {
+      outbound: validOutbound,
+      return: validReturn,
+    },
+    { status: 200 }
+  );
+
+  response.headers.set("Access-Control-Allow-Origin", "*");
+  response.headers.set(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, OPTIONS"
+  );
+  response.headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+
+  return response;
 }

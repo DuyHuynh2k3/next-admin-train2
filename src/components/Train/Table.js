@@ -29,7 +29,7 @@ const Table = () => {
     route_id: "", // Added routeID
     schedule_id: "", // Added scheduleID
     recurrence_id: "",
-    arrival_date: "",
+    // arrival_date: "",
     days_of_week: "", // Added days_of_week
   });
   const [selectedTrainView, setSelectedTrainView] = useState(null); // For view
@@ -137,7 +137,7 @@ const Table = () => {
       schedule_id,
       recurrence_id,
       days_of_week,
-      arrival_date,
+      // arrival_date,
     } = newTrain;
 
     if (

@@ -119,10 +119,10 @@ const Table = () => {
     }
   };
 
-  const handleCloseModal = () => {
-    setShowModal(false); // Đóng Modal
-    setSelectedTicket(null); // Reset ticket selected
-  };
+  // const handleCloseModal = () => {
+  //   setShowModal(false); // Đóng Modal
+  //   setSelectedTicket(null); // Reset ticket selected
+  // };
 
   const handleDelete = async (passport) => {
     const confirmDelete = window.confirm("Bạn có chắc muốn xóa vé này?");

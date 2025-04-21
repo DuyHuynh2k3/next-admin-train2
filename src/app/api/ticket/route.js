@@ -114,31 +114,24 @@ export async function DELETE(request) {
   }
 
   try {
-    // Check if ticket has payments or refunds first
-    const payments = await prisma.payment_ticket.count({
-      where: { ticket_id: parseInt(ticket_id) },
+    const id = parseInt(ticket_id);
+
+    // Xóa refund liên quan
+    await prisma.refund.deleteMany({
+      where: { ticket_id: id },
     });
 
-    const refunds = await prisma.refund.count({
-      where: { ticket_id: parseInt(ticket_id) },
+    // Xóa payment liên quan
+    await prisma.payment_ticket.deleteMany({
+      where: { ticket_id: id },
     });
 
-    if (payments > 0 || refunds > 0) {
-      return new Response(
-        JSON.stringify({
-          error: "Cannot delete ticket with associated payments or refunds",
-          details: "Please cancel payments/refunds first",
-        }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-
+    // Xóa ticket chính
     const result = await prisma.ticket.delete({
-      where: { ticket_id: parseInt(ticket_id) },
+      where: { ticket_id: id },
     });
+
+    console.log("Deleted ticket:", result);
 
     return new Response(
       JSON.stringify({ message: "Ticket deleted successfully" }),
@@ -168,6 +161,7 @@ export async function DELETE(request) {
   }
 }
 
+
 export async function PUT(request) {
   const { ticket_id, passport, fullName, phoneNumber, email } =
     await request.json();
@@ -182,7 +176,7 @@ export async function PUT(request) {
   try {
     // Check if passport exists in customer table
     const customer = await prisma.customer.findUnique({
-      where: { passport: passport },
+      where: { passport: passport.trim() },
     });
 
     if (!customer) {
@@ -199,7 +193,7 @@ export async function PUT(request) {
     const updatedTicket = await prisma.ticket.update({
       where: { ticket_id: parseInt(ticket_id) },
       data: {
-        passport: passport,
+        passport: passport.trim(),
         fullName: fullName,
         phoneNumber: phoneNumber,
         email: email,

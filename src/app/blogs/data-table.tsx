@@ -1,34 +1,47 @@
-// app/blogs/data-table.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { AiFillEdit, AiFillDelete } from "react-icons/ai";
 import { Button } from "@/components/ui/button";
 import axios from "axios";
-import { Blog } from "../../types"; // Tùy cấp độ thư mục
+import { Blog } from "../../types";
+import { toast } from "react-toastify";
 
 const DataTableBlogs = ({ onEdit }: { onEdit: (blog: Blog) => void }) => {
   const [blogs, setBlogs] = useState<Blog[]>([]);
+  const [filteredBlogs, setFilteredBlogs] = useState<Blog[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  // Fetch danh sách blogs
   const fetchBlogs = async () => {
     try {
       const res = await axios.get("/api/blogs");
       setBlogs(res.data);
+      setFilteredBlogs(res.data); // Khởi tạo dữ liệu lọc ban đầu
     } catch (err) {
       console.error("Lỗi khi fetch blogs:", err);
+      toast.error("Lỗi khi tải dữ liệu blog.");
     }
   };
 
-  // Xoá blog
   const handleDelete = async (id: number) => {
     try {
       await axios.delete(`/api/blogs?id=${id}`);
       fetchBlogs();
+      toast.success("Đã xóa blog thành công.");
     } catch (err) {
       console.error("Lỗi khi xóa blog:", err);
+      toast.error("Lỗi khi xóa blog.");
     }
   };
+
+  // Lọc blog theo tiêu đề hoặc tên chuyên mục
+  useEffect(() => {
+    const filtered = blogs.filter((blog) =>
+      blog.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      blog.category.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    setFilteredBlogs(filtered);
+  }, [searchTerm, blogs]);
 
   useEffect(() => {
     fetchBlogs();
@@ -36,6 +49,16 @@ const DataTableBlogs = ({ onEdit }: { onEdit: (blog: Blog) => void }) => {
 
   return (
     <div className="container mx-auto p-4">
+      <div className="mb-4 flex items-center gap-2">
+        <input
+          type="text"
+          placeholder="Tìm theo tiêu đề hoặc chuyên mục..."
+          className="border p-2 rounded w-full"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
+
       <table className="w-full text-left border">
         <thead>
           <tr className="bg-gray-100">
@@ -47,7 +70,7 @@ const DataTableBlogs = ({ onEdit }: { onEdit: (blog: Blog) => void }) => {
           </tr>
         </thead>
         <tbody>
-          {blogs.map((blog, index) => (
+          {filteredBlogs.map((blog, index) => (
             <tr key={blog.id} className="border-t">
               <td className="p-2 border">{index + 1}</td>
               <td className="p-2 border">{blog.title}</td>

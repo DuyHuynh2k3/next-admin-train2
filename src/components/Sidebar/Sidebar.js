@@ -18,8 +18,8 @@ import {
   MdOutlineSettings,
 } from "react-icons/md";
 import { BsPeople } from "react-icons/bs";
-import { TbLogs } from "react-icons/tb";
-
+import { IoNewspaperOutline } from "react-icons/io5";
+import { MdOutlineCreateNewFolder } from "react-icons/md";
 
 const Sidebar = () => {
   return (
@@ -62,23 +62,15 @@ const Sidebar = () => {
         <>Quản lý tin tức</>
       </SItem>
 
-      {linksArrayBlogs.map(({ icon, label, notification, to }) => (
+      {linksArrayBlogs.map(({ icon, label, to }) => (
         <SLinkContainer key={label}>
           <SLink href={to}>
             <SLinkIcon>{icon}</SLinkIcon>
             <SLinkLabel>{label}</SLinkLabel>
-            {!!notification && (
-              <SLinkNotification>{notification}</SLinkNotification>
-            )}
           </SLink>
         </SLinkContainer>
       ))}
-
-      <SItem>
-        <SDivider />
-        <>Quản lý thanh toán</>
-      </SItem>
-
+      <SDivider />
       {secondaryLinksArray.map(({ icon, label, to }) => (
         <SLinkContainer key={label}>
           <SLink href={to}>
@@ -87,8 +79,6 @@ const Sidebar = () => {
           </SLink>
         </SLinkContainer>
       ))}
-
-      <SDivider />
     </SSidebar>
   );
 };
@@ -123,19 +113,20 @@ const linksArrayTrain = [
     notification: 1,
   },
 ];
-const linksArrayBlogs= [
+
+const linksArrayBlogs = [
   {
-    label: "Tạo tin tức",
-    icon: <TbLogs />,
-    to: "/createblogs",
+    label: "Danh Sách Tin Tức",
+    icon: <IoNewspaperOutline />,
+    to: "/blogs",
     notification: 0,
   },
   {
-    label: "Danh sách tin tức",
-    icon: <TbLogs />,
-    to: "/blogs",
+    label: "Tạo tin tức",
+    icon: <MdOutlineCreateNewFolder />,
+    to: "/createblogs",
     notification: 0,
-  }
+  },
 ];
 const secondaryLinksArray = [
   {

@@ -4,9 +4,9 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 const seatTypePriceMultiplier = {
-  soft: 1.1,
-  hard_sleeper_4: 1.2,
-  hard_sleeper_6: 1.3,
+  soft: 1,
+  hard_sleeper_4: 1.1,
+  hard_sleeper_6: 1.2,
 };
 
 export async function GET(req) {
@@ -78,15 +78,16 @@ export async function GET(req) {
       totalBasePrice += parseFloat(routeSegment.base_price);
     }
 
-    const availableSeats = await prisma.seattrain.findMany({
+    // ❗ Lấy tất cả các ghế (không lọc is_available)
+    const allSeats = await prisma.seattrain.findMany({
       where: {
         trainID,
         travel_date: date,
-        is_available: true,
       },
       select: {
         coach: true,
         seat_number: true,
+        is_available: true,
       },
     });
 
@@ -96,17 +97,15 @@ export async function GET(req) {
         coach: true,
         seat_number: true,
         seat_type: true,
-        floor: true, 
+        floor: true,
       },
     });
 
     const resultMap = {};
 
-    for (const seat of availableSeats) {
+    for (const seat of allSeats) {
       const matched = seatTemplates.find(
-        (t) =>
-          t.coach === seat.coach &&
-          t.seat_number === seat.seat_number
+        (t) => t.coach === seat.coach && t.seat_number === seat.seat_number
       );
 
       if (matched) {
@@ -121,7 +120,9 @@ export async function GET(req) {
           };
         }
 
-        resultMap[type].available += 1;
+        if (seat.is_available) {
+          resultMap[type].available += 1;
+        }
 
         if (!resultMap[type].coaches[seat.coach]) {
           resultMap[type].coaches[seat.coach] = {
@@ -130,10 +131,14 @@ export async function GET(req) {
           };
         }
 
-        resultMap[type].coaches[seat.coach].available += 1;
+        if (seat.is_available) {
+          resultMap[type].coaches[seat.coach].available += 1;
+        }
+
         resultMap[type].coaches[seat.coach].seat_numbers.push({
           seat_number: seat.seat_number,
-          floor: matched.floor, 
+          floor: matched.floor,
+          is_available: seat.is_available,
         });
       }
     }
@@ -156,3 +161,4 @@ export async function GET(req) {
     await prisma.$disconnect();
   }
 }
+

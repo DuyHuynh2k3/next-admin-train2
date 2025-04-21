@@ -7,6 +7,7 @@ import { SContainer } from "../style";
 import { Blog } from "../../types";
 import { Button } from "@/components/ui/button";
 import Image from 'next/image';
+import { ToastContainer } from 'react-toastify';
 
 
 const TrainPage = () => {
@@ -32,6 +33,7 @@ const TrainPage = () => {
       <h1 style={{ marginBottom: "20px" }}>Quản lí tin tức</h1>
       <SContainer>
         <DataTableBlogs onEdit={(blog) => setEditingBlog(blog)} />
+        <ToastContainer />
       </SContainer>
 
       {editingBlog && (
@@ -69,11 +71,13 @@ const TrainPage = () => {
 
           {/* Preview ảnh nếu có */}
           {editingBlog.imageUrl && (
-            <image
-              src={editingBlog.imageUrl}
-              alt="Ảnh xem trước"
-              className="w-64 h-auto border rounded"
-            />
+            <Image
+            src="/path-to-your-image.jpg" // Đường dẫn tới ảnh
+            alt="Description of the image"
+            width={500} // Đặt chiều rộng
+            height={300} // Đặt chiều cao
+            className="your-class" // Thêm class nếu cần
+          />
           )}
 
           <div className="space-x-2">
