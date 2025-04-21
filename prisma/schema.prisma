@@ -53,6 +53,8 @@ model ticket {
   refund_status                           ticket_refund_status?  @default(None)
   passenger_type                          ticket_passenger_type? @default(Adult)
   journey_segments                        String?                @db.LongText
+  seatType                                String?                @db.VarChar(50)
+  qr_code_url                             String?                @db.VarChar(255)
   payment_ticket                          payment_ticket[]
   refund                                  refund[]
   customer                                customer?              @relation(fields: [passport], references: [passport], onDelete: Cascade, map: "fk_passport")
@@ -184,6 +186,22 @@ model seattrain {
 
   @@unique([trainID, travel_date, coach, seat_number], map: "trainID")
   @@index([trainID, travel_date, is_available], map: "idx_seatrain_date")
+}
+
+model blog {
+  id         Int      @id @default(autoincrement())
+  title      String   @db.VarChar(255)
+  content    String   @db.Text
+  createdAt  DateTime @default(now()) @db.DateTime(0)
+  imageUrls  String?  @db.LongText
+  categoryId Int
+
+  @@index([categoryId], map: "idx_categoryId")
+}
+
+model category {
+  id   Int    @id @default(autoincrement())
+  name String @unique(map: "name") @db.VarChar(255)
 }
 
 enum ticket_payment_status {

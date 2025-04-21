@@ -148,10 +148,16 @@ export function DataTableTicket() {
           throw new Error(errorData.error || "Xóa vé thất bại");
         }
 
-        setTicketData((prevRecords) =>
-          prevRecords.filter((record) => record.ticket_id !== ticket_id)
-        );
+        // Refresh the ticket list
+        const res = await fetch(`/api/ticket?limit=${limit}`);
+        if (!res.ok) {
+          throw new Error("Không thể tải lại danh sách vé");
+        }
+        const updatedData = await res.json();
+        setTicketData(updatedData);
+
         setError(null);
+        alert("Xóa vé thành công!");
       } catch (error) {
         console.error("Lỗi khi xóa vé:", error);
         setError(
@@ -337,12 +343,6 @@ export function DataTableTicket() {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleUpdate(ticket.ticket_id)}>
                 Cập nhật thông tin
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => handleDelete(ticket.ticket_id)}
-                className="text-red-500"
-              >
-                Xóa vé
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

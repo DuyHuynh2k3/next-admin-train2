@@ -20,39 +20,94 @@ export async function POST(request) {
       );
     }
 
-    // Kiểm tra ticket_id có hợp lệ không
-    const ticketId = ticket_id ? parseInt(ticket_id) : undefined;
-    if (ticketId && isNaN(ticketId)) {
-      console.log("Error: Invalid ticket ID");
-      return NextResponse.json(
-        { message: "Mã đặt chỗ không hợp lệ" },
-        { status: 400 }
-      );
-    }
+    let ticketInfo;
 
-    // Tìm thông tin vé
-    const ticketInfo = await prisma.ticket.findFirst({
-      where: {
-        OR: [
-          { ticket_id: ticketId },
-          { email: email || undefined },
-          { phoneNumber: phoneNumber || undefined },
-        ],
-      },
-      include: {
-        payment_ticket: true,
-      },
-    });
+    // Ưu tiên tìm kiếm bằng ticket_id nếu có
+    if (ticket_id) {
+      const ticketId = parseInt(ticket_id);
+      if (isNaN(ticketId)) {
+        console.log("Error: Invalid ticket ID");
+        return NextResponse.json(
+          { message: "Mã đặt chỗ không hợp lệ" },
+          { status: 400 }
+        );
+      }
+
+      // Tìm vé bằng ticket_id
+      ticketInfo = await prisma.ticket.findUnique({
+        where: { ticket_id: ticketId },
+        include: {
+          payment_ticket: true,
+        },
+      });
+
+      if (!ticketInfo) {
+        console.log("Error: Ticket not found with ticket_id:", ticketId);
+        return NextResponse.json(
+          { message: "Không tìm thấy thông tin vé với mã vé này" },
+          { status: 404 }
+        );
+      }
+
+      // Kiểm tra email và phoneNumber để xác thực (nếu được cung cấp)
+      if (email && ticketInfo.email?.toLowerCase() !== email.toLowerCase()) {
+        console.log("Error: Email does not match");
+        return NextResponse.json(
+          { message: "Email không khớp với vé này" },
+          { status: 400 }
+        );
+      }
+
+      if (phoneNumber && ticketInfo.phoneNumber !== phoneNumber) {
+        console.log("Error: Phone number does not match");
+        return NextResponse.json(
+          { message: "Số điện thoại không khớp với vé này" },
+          { status: 400 }
+        );
+      }
+    } else {
+      // Nếu không có ticket_id, tìm kiếm bằng email hoặc phoneNumber
+      const conditions = [];
+      if (email) {
+        conditions.push({ email: email.toLowerCase() });
+      }
+      if (phoneNumber) {
+        conditions.push({ phoneNumber: phoneNumber });
+      }
+
+      if (conditions.length === 0) {
+        console.log("Error: No valid search conditions");
+        return NextResponse.json(
+          {
+            message:
+              "Vui lòng cung cấp ít nhất một thông tin (email hoặc số điện thoại)",
+          },
+          { status: 400 }
+        );
+      }
+
+      ticketInfo = await prisma.ticket.findFirst({
+        where: {
+          OR: conditions,
+        },
+        include: {
+          payment_ticket: true,
+        },
+      });
+
+      if (!ticketInfo) {
+        console.log("Error: Ticket not found with email/phoneNumber");
+        return NextResponse.json(
+          {
+            message:
+              "Không tìm thấy thông tin vé. Vui lòng kiểm trai lại email hoặc số điện thoại.",
+          },
+          { status: 404 }
+        );
+      }
+    }
 
     console.log("Ticket Info:", ticketInfo);
-
-    if (!ticketInfo) {
-      console.log("Error: Ticket not found");
-      return NextResponse.json(
-        { message: "Không tìm thấy thông tin vé" },
-        { status: 404 }
-      );
-    }
 
     // Kiểm tra xem vé đã được yêu cầu trả chưa
     if (ticketInfo.refund_status === "Requested") {
@@ -92,7 +147,7 @@ export async function POST(request) {
         );
       }
 
-      // Take the first payment record
+      // Lấy bản ghi thanh toán đầu tiên
       const payment = ticketInfo.payment_ticket[0];
       const paymentAmount = payment.payment_amount;
       const paymentAmountNumber = Number(paymentAmount);
@@ -148,5 +203,7 @@ export async function POST(request) {
       { error: "Lỗi server", details: error.message },
       { status: 500 }
     );
+  } finally {
+    await prisma.$disconnect();
   }
 }

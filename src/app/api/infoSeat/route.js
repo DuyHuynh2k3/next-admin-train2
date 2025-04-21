@@ -1,98 +1,193 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { format } from "date-fns"; // Import hàm format từ date-fns
+import { format } from "date-fns";
+import QRService from "@/services/qrService";
 
 const prisma = new PrismaClient();
 
 export async function GET(request) {
   try {
-    // Lấy tham số từ query string
     const { searchParams } = new URL(request.url);
     const ticket_id = searchParams.get("ticket_id");
     const email = searchParams.get("email");
     const phoneNumber = searchParams.get("phoneNumber");
 
-    // Debug: Kiểm tra các tham số từ frontend
-    console.log("Ticket ID:", ticket_id);
-    console.log("Email:", email);
-    console.log("Phone Number:", phoneNumber);
-
-    // Kiểm tra xem cả 3 tham số đều được cung cấp
-    if (!ticket_id || !email || !phoneNumber) {
+    // Validate inputs: At least one field must be provided
+    if (!ticket_id && !email && !phoneNumber) {
       return NextResponse.json(
         {
-          message:
-            "Vui lòng cung cấp đầy đủ thông tin (mã đặt chỗ, email và số điện thoại)",
+          error:
+            "Vui lòng cung cấp ít nhất một thông tin (mã vé, email hoặc số điện thoại)",
         },
         { status: 400 }
       );
     }
 
-    // Kiểm tra ticket_id có hợp lệ không
-    const ticketId = parseInt(ticket_id);
-    if (isNaN(ticketId)) {
-      return NextResponse.json(
-        { message: "Mã đặt chỗ không hợp lệ" },
-        { status: 400 }
-      );
-    }
+    let ticket;
 
-    // Truy vấn database để tìm thông tin vé
-    const ticketInfo = await prisma.ticket.findFirst({
-      where: {
-        AND: [
-          { ticket_id: ticketId },
-          { email: email },
-          { phoneNumber: phoneNumber },
-        ],
-      },
-      include: {
-        customer: true,
-        seattrain: true,
-        train: true,
-      },
-    });
+    // Prioritize ticket_id if provided
+    if (ticket_id) {
+      const ticketId = parseInt(ticket_id);
+      if (isNaN(ticketId)) {
+        return NextResponse.json(
+          { error: "Mã vé không hợp lệ" },
+          { status: 400 }
+        );
+      }
 
-    // Kiểm tra kết quả truy vấn
-    if (ticketInfo) {
-      // Định dạng lại các trường ngày và thời gian
-      const formattedTicketInfo = {
-        ...ticketInfo,
-        travel_date: format(new Date(ticketInfo.travel_date), "dd-MM-yyyy"), // Định dạng ngày
-        departTime: ticketInfo.departTime
-          ? format(
-              new Date(
-                `1970-01-01T${ticketInfo.departTime
-                  .toISOString()
-                  .substring(11, 19)}`
-              ),
-              "HH:mm"
-            ) // Chuyển đổi thời gian
-          : "N/A",
-        arrivalTime: ticketInfo.arrivalTime
-          ? format(
-              new Date(
-                `1970-01-01T${ticketInfo.arrivalTime
-                  .toISOString()
-                  .substring(11, 19)}`
-              ),
-              "HH:mm"
-            ) // Chuyển đổi thời gian
-          : "N/A",
-      };
+      // Find ticket by ticket_id first
+      ticket = await prisma.ticket.findUnique({
+        where: { ticket_id: ticketId },
+        include: {
+          customer: true,
+          train: true,
+          station_ticket_from_station_idTostation: true,
+          station_ticket_to_station_idTostation: true,
+        },
+      });
 
-      return NextResponse.json(formattedTicketInfo); // Trả về thông tin vé đã định dạng
+      if (!ticket) {
+        return NextResponse.json(
+          {
+            error: "Không tìm thấy vé với mã vé này.",
+          },
+          { status: 404 }
+        );
+      }
+
+      // If email or phoneNumber is provided, validate them
+      if (email && ticket.email?.toLowerCase() !== email.toLowerCase()) {
+        return NextResponse.json(
+          {
+            error: "Email không khớp với vé này.",
+          },
+          { status: 400 }
+        );
+      }
+
+      if (phoneNumber && ticket.phoneNumber !== phoneNumber) {
+        return NextResponse.json(
+          {
+            error: "Số điện thoại không khớp với vé này.",
+          },
+          { status: 400 }
+        );
+      }
     } else {
-      return NextResponse.json(
-        { message: "Không tìm thấy thông tin vé" },
-        { status: 404 }
-      );
+      // If no ticket_id, search by email or phoneNumber
+      const conditions = [];
+      if (email) {
+        conditions.push({ email: email.toLowerCase() });
+      }
+      if (phoneNumber) {
+        conditions.push({ phoneNumber: phoneNumber });
+      }
+
+      ticket = await prisma.ticket.findFirst({
+        where: {
+          OR: conditions,
+        },
+        include: {
+          customer: true,
+          train: true,
+          station_ticket_from_station_idTostation: true,
+          station_ticket_to_station_idTostation: true,
+        },
+      });
+
+      if (!ticket) {
+        return NextResponse.json(
+          {
+            error:
+              "Không tìm thấy thông tin vé. Vui lòng kiểm tra lại email hoặc số điện thoại.",
+          },
+          { status: 404 }
+        );
+      }
     }
+
+    // Check database QR code URL
+    const dbTicket = await prisma.ticket.findFirst({
+      where: { ticket_id: ticket.ticket_id },
+      select: { qr_code_url: true },
+    });
+    console.log("QR Code URL from DB:", dbTicket.qr_code_url);
+
+    // Generate QR code if not exists or incorrect
+    const expectedQrUrl = `https://d1nkpirvj8r8y4.cloudfront.net/qrcodes/ticket_${ticket.ticket_id}.png`;
+    console.log("Expected QR Code URL:", expectedQrUrl);
+    console.log("Current QR Code URL:", ticket.qr_code_url);
+
+    if (!ticket.qr_code_url || ticket.qr_code_url !== expectedQrUrl) {
+      console.log("QR code URL is missing or incorrect, updating...");
+      try {
+        const { qrUrl } = await QRService.generateForTicket(ticket);
+        ticket = await prisma.ticket.update({
+          where: { ticket_id: ticket.ticket_id },
+          data: { qr_code_url: qrUrl },
+          include: {
+            customer: true,
+            train: true,
+            station_ticket_from_station_idTostation: true,
+            station_ticket_to_station_idTostation: true,
+          },
+        });
+        console.log("Updated QR Code URL:", ticket.qr_code_url);
+      } catch (qrError) {
+        console.error(
+          "Failed to generate QR code, using expected URL:",
+          qrError
+        );
+        ticket = await prisma.ticket.update({
+          where: { ticket_id: ticket.ticket_id },
+          data: { qr_code_url: expectedQrUrl },
+          include: {
+            customer: true,
+            train: true,
+            station_ticket_from_station_idTostation: true,
+            station_ticket_to_station_idTostation: true,
+          },
+        });
+        console.log("Force updated QR Code URL:", ticket.qr_code_url);
+      }
+    }
+
+    // Format response
+    console.log("Ticket QR Code URL before formatting:", ticket.qr_code_url);
+    const formattedTicket = {
+      ...ticket,
+      travel_date: format(new Date(ticket.travel_date), "dd/MM/yyyy"),
+      departTime: format(
+        new Date(
+          `${ticket.travel_date.toISOString().split("T")[0]}T${ticket.departTime
+            .toISOString()
+            .substring(11, 19)}`
+        ),
+        "dd/MM/yyyy HH:mm"
+      ),
+      arrivalTime: format(
+        new Date(
+          `${
+            ticket.travel_date.toISOString().split("T")[0]
+          }T${ticket.arrivalTime.toISOString().substring(11, 19)}`
+        ),
+        "dd/MM/yyyy HH:mm"
+      ),
+      fromStationName:
+        ticket.station_ticket_from_station_idTostation?.station_name,
+      toStationName: ticket.station_ticket_to_station_idTostation?.station_name,
+      trainName: ticket.train?.train_name,
+    };
+    console.log("Formatted Ticket QR Code URL:", formattedTicket.qr_code_url);
+
+    return NextResponse.json(formattedTicket);
   } catch (error) {
-    console.error("Lỗi khi truy vấn cơ sở dữ liệu:", error);
+    console.error("Error fetching ticket:", error);
     return NextResponse.json(
-      { error: "Lỗi server", details: error.message },
+      { error: "Lỗi hệ thống", details: error.message },
       { status: 500 }
     );
+  } finally {
+    await prisma.$disconnect();
   }
 }

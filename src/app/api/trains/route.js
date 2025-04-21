@@ -666,40 +666,65 @@ export async function DELETE(request) {
       );
     }
 
+    const trainIdNum = parseInt(trainID);
+
+    // Kiểm tra xem tàu có tồn tại hay không
+    const train = await prisma.train.findUnique({
+      where: { trainID: trainIdNum },
+    });
+
+    if (!train) {
+      return NextResponse.json(
+        { error: `Train with trainID ${trainID} not found` },
+        { status: 404 }
+      );
+    }
+
     await prisma.$transaction(async (prisma) => {
-      const schedule = await prisma.schedule.findFirst({
-        where: { trainID: parseInt(trainID) },
+      // 1. Lấy tất cả các lịch trình (schedule) liên quan đến trainID
+      const schedules = await prisma.schedule.findMany({
+        where: { trainID: trainIdNum },
+        select: { recurrence_id: true },
       });
 
-      if (schedule) {
-        await prisma.schedule.delete({
-          where: { schedule_id: schedule.schedule_id },
-        });
+      // 2. Xóa tất cả các bản ghi trong schedule liên quan đến trainID
+      await prisma.schedule.deleteMany({
+        where: { trainID: trainIdNum },
+      });
 
-        await prisma.train_recurrence.delete({
-          where: { recurrence_id: schedule.recurrence_id },
+      // 3. Xóa tất cả các bản ghi trong train_recurrence liên quan đến các lịch trình
+      if (schedules.length > 0) {
+        const recurrenceIds = schedules.map(
+          (schedule) => schedule.recurrence_id
+        );
+        await prisma.train_recurrence.deleteMany({
+          where: { recurrence_id: { in: recurrenceIds } },
         });
       }
 
+      // 4. Xóa tất cả các bản ghi trong train_stop liên quan đến trainID
       await prisma.train_stop.deleteMany({
-        where: { trainID: parseInt(trainID) },
+        where: { trainID: trainIdNum },
       });
 
+      // 5. Xóa tất cả các bản ghi trong seat_template liên quan đến trainID
       await prisma.seat_template.deleteMany({
-        where: { trainID: parseInt(trainID) },
+        where: { trainID: trainIdNum },
       });
 
+      // 6. Xóa tất cả các bản ghi trong seattrain liên quan đến trainID
       await prisma.seattrain.deleteMany({
-        where: { trainID: parseInt(trainID) },
+        where: { trainID: trainIdNum },
       });
 
+      // 7. Cuối cùng, xóa bản ghi trong train
       await prisma.train.delete({
-        where: { trainID: parseInt(trainID) },
+        where: { trainID: trainIdNum },
       });
     });
 
     return NextResponse.json(
-      { message: "Train deleted successfully" },
+      { message: `Train with trainID ${trainID} deleted successfully` },
       { status: 200 }
     );
   } catch (error) {

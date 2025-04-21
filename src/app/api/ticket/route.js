@@ -114,56 +114,82 @@ export async function DELETE(request) {
   }
 
   try {
-    // Check if ticket has payments or refunds first
-    const payments = await prisma.payment_ticket.count({
-      where: { ticket_id: parseInt(ticket_id) },
-    });
+    // Start a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Check if ticket exists
+      const ticket = await tx.ticket.findUnique({
+        where: { ticket_id: parseInt(ticket_id) },
+        include: { seattrain: true },
+      });
 
-    const refunds = await prisma.refund.count({
-      where: { ticket_id: parseInt(ticket_id) },
-    });
+      if (!ticket) {
+        throw new Error("Ticket not found");
+      }
 
-    if (payments > 0 || refunds > 0) {
-      return new Response(
-        JSON.stringify({
-          error: "Cannot delete ticket with associated payments or refunds",
-          details: "Please cancel payments/refunds first",
-        }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
+      // Check for associated payments or refunds
+      const payments = await tx.payment_ticket.count({
+        where: { ticket_id: parseInt(ticket_id) },
+      });
 
-    const result = await prisma.ticket.delete({
-      where: { ticket_id: parseInt(ticket_id) },
+      const refunds = await tx.refund.count({
+        where: { ticket_id: parseInt(ticket_id) },
+      });
+
+      if (payments > 0 || refunds > 0) {
+        throw new Error(
+          "Cannot delete ticket with associated payments or refunds"
+        );
+      }
+
+      // If the ticket has a seat, mark it as available
+      if (ticket.seatID) {
+        await tx.seattrain.update({
+          where: { seatID: ticket.seatID },
+          data: { is_available: true },
+        });
+      }
+
+      // Delete the ticket
+      await tx.ticket.delete({
+        where: { ticket_id: parseInt(ticket_id) },
+      });
+
+      return { message: "Ticket deleted successfully" };
     });
 
     console.log("Deleted ticket:", result);
 
-    return new Response(
-      JSON.stringify({ message: "Ticket deleted successfully" }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error("Error deleting ticket:", error);
-    if (error.code === "P2025") {
-      return new Response(JSON.stringify({ error: "Ticket not found" }), {
-        status: 404,
-        headers: { "Content-Type": "application/json" },
-      });
+    let errorMessage = "Failed to delete ticket";
+    let status = 500;
+
+    if (error.message === "Ticket not found") {
+      errorMessage = "Ticket not found";
+      status = 404;
+    } else if (
+      error.message ===
+      "Cannot delete ticket with associated payments or refunds"
+    ) {
+      errorMessage = error.message;
+      status = 400;
+    } else if (error.code === "P2003") {
+      // Foreign key constraint violation
+      errorMessage = "Cannot delete ticket due to related records";
+      status = 400;
     }
+
     return new Response(
       JSON.stringify({
-        error: "Failed to delete ticket",
+        error: errorMessage,
         details: error.message,
       }),
       {
-        status: 500,
+        status,
         headers: { "Content-Type": "application/json" },
       }
     );
