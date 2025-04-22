@@ -103,7 +103,7 @@ model payment_ticket {
 }
 
 model refund {
-  refund_id     Int                   @id
+  refund_id     Int                   @id @default(autoincrement())
   refund_amount Decimal?              @db.Decimal(10, 2)
   refund_status refund_refund_status?
   refund_date   DateTime?             @db.DateTime(0)

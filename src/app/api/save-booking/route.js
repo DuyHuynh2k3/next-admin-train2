@@ -77,7 +77,11 @@ export async function POST(request) {
       qr_code_url: transaction.ticket.qr_code_url,
     });
   } catch (error) {
-    console.error("Error saving booking:", error);
+    console.error("Error saving booking:", {
+      message: error.message,
+      stack: error.stack,
+      raw: error,
+    });
     return NextResponse.json(
       {
         success: false,
