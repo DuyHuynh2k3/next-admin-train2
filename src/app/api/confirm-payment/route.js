@@ -1,83 +1,12 @@
-import prisma from "@/lib/prisma";
+import { NextResponse } from "next/server";
+import { PrismaClient } from "@prisma/client";
 
-export async function POST(request) {
+const prisma = new PrismaClient();
+
+async function sendBookingEmail(tickets, booking, email) {
   try {
-    console.log(
-      "BREVO_API_KEY:",
-      process.env.BREVO_API_KEY ? "Có API key" : "Không có API key"
-    );
-
-    const { email } = await request.json();
-    console.log("Email nhận được:", email);
-
-    if (!email) {
-      console.error("Lỗi: Email không được cung cấp");
-      return new Response(JSON.stringify({ error: "Email là bắt buộc" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      console.error("Lỗi: Email không hợp lệ:", email);
-      return new Response(JSON.stringify({ error: "Email không hợp lệ" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    // Tìm booking mới nhất dựa trên email
-    const bookings = await prisma.booking.findMany({
-      where: { email },
-      orderBy: { created_at: "desc" },
-      take: 1,
-      include: {
-        tickets: {
-          select: {
-            ticket_id: true,
-            fullName: true,
-            passport: true,
-            phoneNumber: true,
-            passenger_type: true,
-            travel_date: true,
-            from_station_id: true,
-            to_station_id: true,
-            trainID: true,
-            departTime: true,
-            arrivalTime: true,
-            price: true,
-            seatType: true,
-            coach_seat: true,
-            qr_code_url: true,
-            station_ticket_from_station_idTostation: {
-              select: { station_name: true },
-            },
-            station_ticket_to_station_idTostation: {
-              select: { station_name: true },
-            },
-            train: {
-              select: { train_name: true },
-            },
-          },
-        },
-      },
-    });
-
-    if (!bookings.length || !bookings[0].tickets.length) {
-      console.error("Lỗi: Không tìm thấy vé nào với email:", email);
-      return new Response(
-        JSON.stringify({ error: "Không tìm thấy vé nào với email này" }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    const booking = bookings[0];
-    const tickets = booking.tickets;
-
-    // Tạo nội dung email
     let htmlContent = `
-      <h1>Danh sách mã đặt chỗ của bạn</h1>
+      <h1>Xác nhận đặt vé tàu</h1>
       <p>Cảm ơn bạn đã sử dụng dịch vụ của chúng tôi!</p>
       <h3>Thông tin đặt vé (Mã đặt: ${booking.booking_id}):</h3>
       <ul>
@@ -147,7 +76,7 @@ export async function POST(request) {
           email: "deathgunvn2003@gmail.com",
         },
         to: [{ email }],
-        subject: "Danh sách mã đặt chỗ của bạn",
+        subject: "Xác nhận đặt vé tàu thành công",
         htmlContent,
       }),
     });
@@ -161,19 +90,91 @@ export async function POST(request) {
     }
 
     console.log("Email gửi thành công:", responseData);
-    return new Response(
-      JSON.stringify({
-        message: "Danh sách mã đặt chỗ đã được gửi đến email của bạn!",
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
-    );
   } catch (error) {
     console.error("Lỗi khi gửi email:", error.message, error.stack);
-    return new Response(
-      JSON.stringify({
-        error: error.message || "Gửi email thất bại, vui lòng thử lại",
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+    throw error;
+  }
+}
+
+export async function POST(request) {
+  try {
+    const { booking_id, ticket_ids, email, payment_status } =
+      await request.json();
+
+    if (!booking_id || !ticket_ids?.length || !email) {
+      return NextResponse.json(
+        { success: false, error: "Thiếu thông tin cần thiết" },
+        { status: 400 }
+      );
+    }
+
+    if (payment_status !== "Success") {
+      return NextResponse.json(
+        { success: false, error: "Thanh toán không thành công" },
+        { status: 400 }
+      );
+    }
+
+    // Tìm booking và tickets
+    const booking = await prisma.booking.findUnique({
+      where: { booking_id: parseInt(booking_id) },
+      include: {
+        tickets: {
+          include: {
+            station_ticket_from_station_idTostation: {
+              select: { station_name: true },
+            },
+            station_ticket_to_station_idTostation: {
+              select: { station_name: true },
+            },
+            train: { select: { train_name: true } },
+          },
+        },
+      },
+    });
+
+    if (!booking || booking.tickets.length !== ticket_ids.length) {
+      return NextResponse.json(
+        { success: false, error: "Không tìm thấy thông tin đặt vé" },
+        { status: 404 }
+      );
+    }
+
+    // Cập nhật trạng thái thanh toán
+    await prisma.$transaction(async (prisma) => {
+      for (const ticket_id of ticket_ids) {
+        await prisma.ticket.update({
+          where: { ticket_id },
+          data: { payment_status: "Paid" },
+        });
+        await prisma.payment_ticket.updateMany({
+          where: { ticket_id },
+          data: { payment_status: "Success" },
+        });
+      }
+    });
+
+    // Gửi email xác nhận
+    await sendBookingEmail(booking.tickets, booking, email);
+
+    return NextResponse.json({
+      success: true,
+      message: "Xác nhận thanh toán và gửi email thành công",
+    });
+  } catch (error) {
+    console.error("Error confirming payment:", {
+      message: error.message,
+      stack: error.stack,
+      raw: error,
+    });
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Lỗi khi xác nhận thanh toán hoặc gửi email",
+        details:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      },
+      { status: 500 }
     );
   } finally {
     await prisma.$disconnect();

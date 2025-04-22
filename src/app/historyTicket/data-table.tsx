@@ -464,6 +464,7 @@ export function DataTableTicket() {
                 table.setPageSize(Number(e.target.value));
                 setLimit(Number(e.target.value));
               }}
+              aria-label="Chọn số lượng mục hiển thị mỗi trang"
             >
               {[10, 20, 30, 40, 50].map((pageSize) => (
                 <option key={pageSize} value={pageSize}>
@@ -527,7 +528,7 @@ export function DataTableTicket() {
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label className="text-right font-medium">Ngày đi:</Label>
                 <div className="col-span-3">
-                  {formatDate(selectedTicketView.travel_date)}
+                  {(selectedTicketView.travel_date)}
                 </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">

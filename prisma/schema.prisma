@@ -9,11 +9,12 @@ datasource db {
 }
 
 model customer {
-  passport    String   @id @db.VarChar(50)
-  fullName    String?  @db.VarChar(100)
-  email       String?  @db.VarChar(100)
-  phoneNumber String?  @db.VarChar(15)
-  ticket      ticket[]
+  passport    String    @id @db.VarChar(50)
+  fullName    String?   @db.VarChar(100)
+  email       String?   @db.VarChar(100)
+  phoneNumber String?   @db.VarChar(15)
+  tickets     ticket[]  @relation("CustomerToTicket")
+  bookings    booking[] @relation("BookingToCustomer")
 }
 
 model schedule {
@@ -31,6 +32,19 @@ model schedule {
   @@index([departTime], map: "idx_departure")
   @@index([recurrence_id], map: "recurrence_id")
   @@index([trainID, departTime], map: "idx_schedule_train_date")
+}
+
+model booking {
+  booking_id        Int      @id @default(autoincrement())
+  customer_passport String   @db.VarChar(50)
+  email             String?  @db.VarChar(100)
+  phoneNumber       String?  @db.VarChar(15)
+  fullName          String?  @db.VarChar(100)
+  created_at        DateTime @default(now()) @db.DateTime(0)
+  tickets           ticket[] @relation("BookingToTicket")
+  customer          customer @relation("BookingToCustomer", fields: [customer_passport], references: [passport], onDelete: Cascade)
+
+  @@index([customer_passport], map: "fk_booking_customer")
 }
 
 model ticket {
@@ -54,14 +68,17 @@ model ticket {
   passenger_type                          ticket_passenger_type? @default(Adult)
   journey_segments                        String?                @db.LongText
   seatType                                String?                @db.VarChar(50)
+  tripType                                String?                @default("oneway") @db.VarChar(10)
   qr_code_url                             String?                @db.VarChar(255)
+  booking_id                              Int?
   payment_ticket                          payment_ticket[]
   refund                                  refund[]
-  customer                                customer?              @relation(fields: [passport], references: [passport], onDelete: Cascade, map: "fk_passport")
+  customer                                customer?              @relation("CustomerToTicket", fields: [passport], references: [passport], onDelete: Cascade, map: "fk_passport")
   seattrain                               seattrain?             @relation(fields: [seatID], references: [seatID], map: "fk_seatID")
   train                                   train                  @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "fk_trainID")
   station_ticket_from_station_idTostation station                @relation("ticket_from_station_idTostation", fields: [from_station_id], references: [station_id], onUpdate: Restrict, map: "ticket_ibfk_2")
   station_ticket_to_station_idTostation   station                @relation("ticket_to_station_idTostation", fields: [to_station_id], references: [station_id], onUpdate: Restrict, map: "ticket_ibfk_3")
+  booking                                 booking?               @relation("BookingToTicket", fields: [booking_id], references: [booking_id], onDelete: Cascade)
 
   @@index([passport], map: "fk_ticket_customer")
   @@index([from_station_id], map: "from_station_id")
@@ -69,6 +86,7 @@ model ticket {
   @@index([seatID], map: "ticket_ibfk_4")
   @@index([to_station_id], map: "to_station_id")
   @@index([trainID], map: "trainID")
+  @@index([booking_id], map: "fk_booking")
 }
 
 model train {

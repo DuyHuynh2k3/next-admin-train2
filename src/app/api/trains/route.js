@@ -687,18 +687,13 @@ export async function DELETE(request) {
         select: { recurrence_id: true },
       });
 
-      // 2. Xóa tất cả các bản ghi trong schedule liên quan đến trainID
-      await prisma.schedule.deleteMany({
-        where: { trainID: trainIdNum },
-      });
+      if (schedule) {
+        await prisma.schedule.delete({
+          where: { schedule_id: schedule.schedule_id },
+        });
 
-      // 3. Xóa tất cả các bản ghi trong train_recurrence liên quan đến các lịch trình
-      if (schedules.length > 0) {
-        const recurrenceIds = schedules.map(
-          (schedule) => schedule.recurrence_id
-        );
-        await prisma.train_recurrence.deleteMany({
-          where: { recurrence_id: { in: recurrenceIds } },
+        await prisma.train_recurrence.delete({
+          where: { recurrence_id: schedule.recurrence_id },
         });
       }
 

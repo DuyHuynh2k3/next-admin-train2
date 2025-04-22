@@ -18,6 +18,8 @@ import {
   MdOutlineSettings,
 } from "react-icons/md";
 import { BsPeople } from "react-icons/bs";
+import { IoNewspaperOutline } from "react-icons/io5";
+import { MdOutlineCreateNewFolder } from "react-icons/md";
 
 const Sidebar = () => {
   return (
@@ -57,9 +59,18 @@ const Sidebar = () => {
 
       <SItem>
         <SDivider />
-        <>Quản lý thanh toán</>
+        <>Quản lý tin tức</>
       </SItem>
 
+      {linksArrayBlogs.map(({ icon, label, to }) => (
+        <SLinkContainer key={label}>
+          <SLink href={to}>
+            <SLinkIcon>{icon}</SLinkIcon>
+            <SLinkLabel>{label}</SLinkLabel>
+          </SLink>
+        </SLinkContainer>
+      ))}
+      <SDivider />
       {secondaryLinksArray.map(({ icon, label, to }) => (
         <SLinkContainer key={label}>
           <SLink href={to}>
@@ -68,8 +79,6 @@ const Sidebar = () => {
           </SLink>
         </SLinkContainer>
       ))}
-
-      <SDivider />
     </SSidebar>
   );
 };
@@ -105,6 +114,20 @@ const linksArrayTrain = [
   },
 ];
 
+const linksArrayBlogs = [
+  {
+    label: "Danh Sách Tin Tức",
+    icon: <IoNewspaperOutline />,
+    to: "/blogs",
+    notification: 0,
+  },
+  {
+    label: "Tạo tin tức",
+    icon: <MdOutlineCreateNewFolder />,
+    to: "/createblogs",
+    notification: 0,
+  },
+];
 const secondaryLinksArray = [
   {
     label: "Settings",

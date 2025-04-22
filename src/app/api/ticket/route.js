@@ -196,6 +196,7 @@ export async function DELETE(request) {
   }
 }
 
+
 export async function PUT(request) {
   const { ticket_id, passport, fullName, phoneNumber, email } =
     await request.json();
@@ -210,7 +211,7 @@ export async function PUT(request) {
   try {
     // Check if passport exists in customer table
     const customer = await prisma.customer.findUnique({
-      where: { passport: passport },
+      where: { passport: passport.trim() },
     });
 
     if (!customer) {
@@ -227,7 +228,7 @@ export async function PUT(request) {
     const updatedTicket = await prisma.ticket.update({
       where: { ticket_id: parseInt(ticket_id) },
       data: {
-        passport: passport,
+        passport: passport.trim(),
         fullName: fullName,
         phoneNumber: phoneNumber,
         email: email,
