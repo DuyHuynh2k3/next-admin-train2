@@ -55,6 +55,7 @@ model ticket {
   journey_segments                        String?                @db.LongText
   seatType                                String?                @db.VarChar(50)
   tripType                                String?                @default("oneway") @db.VarChar(10)
+  qr_code_url                             String?                @db.VarChar(255)
   payment_ticket                          payment_ticket[]
   refund                                  refund[]
   customer                                customer?              @relation(fields: [passport], references: [passport], onDelete: Cascade, map: "fk_passport")
@@ -103,7 +104,7 @@ model payment_ticket {
 }
 
 model refund {
-  refund_id     Int                   @id
+  refund_id     Int                   @id @default(autoincrement())
   refund_amount Decimal?              @db.Decimal(10, 2)
   refund_status refund_refund_status?
   refund_date   DateTime?             @db.DateTime(0)

@@ -1,7 +1,6 @@
-// src/app/api/save-booking
-
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+
 const passengerTypeEnum = {
   0: "Adult",
   1: "Child",
@@ -9,42 +8,34 @@ const passengerTypeEnum = {
   3: "Student",
 };
 
-
 const prisma = new PrismaClient();
 
 const parseUTCTime = (dateStr, timeStr) => {
-  const [hours, minutes] = timeStr.split(':');
+  const [hours, minutes] = timeStr.split(":");
   const date = new Date(dateStr);
   date.setUTCHours(parseInt(hours));
   date.setUTCMinutes(parseInt(minutes));
   return date;
 };
+
 export async function POST(request) {
   let transaction;
   try {
     const { customerData, ticketDataList, paymentData } = await request.json();
-    // Start transaction
+
     transaction = await prisma.$transaction(async (prisma) => {
-      // 1. Handle customer data
       let customer = null;
+
+      // 1. Create or update customer
       if (customerData?.passport) {
+        const { passport, fullName, email, phoneNumber } = customerData;
         customer = await prisma.customer.upsert({
-          where: { passport: customerData.passport },
-          update: {
-            fullName: customerData.fullName,
-            email: customerData.email,
-            phoneNumber: customerData.phoneNumber,
-          },
-          create: {
-            passport: customerData.passport,
-            fullName: customerData.fullName,
-            email: customerData.email,
-            phoneNumber: customerData.phoneNumber,
-          },
+          where: { passport },
+          update: { fullName, email, phoneNumber },
+          create: { passport, fullName, email, phoneNumber },
         });
       }
 
-      // 2. Lưu danh sách vé
       const createdTickets = [];
 
       for (const ticketData of ticketDataList) {
@@ -54,23 +45,23 @@ export async function POST(request) {
           email: ticketData.email,
           seatType: ticketData.seatType,
           q_code:
-            ticketData.q_code ||
-            `QR_${Math.random().toString(36).substr(2, 9)}`,
+            ticketData.q_code || `QR_${Math.random().toString(36).substr(2, 9)}`,
           coach_seat: ticketData.coach_seat,
           travel_date: new Date(ticketData.travel_date || Date.now()),
-          departTime: ticketData.departTime 
-          ? parseUTCTime(ticketData.travel_date, ticketData.departTime)
-          : new Date(`${ticketData.travel_date}T00:00:00Z`),
-        
-        arrivalTime: ticketData.arrivalTime
-          ? parseUTCTime(ticketData.travel_date, ticketData.arrivalTime)
-          : new Date(`${ticketData.travel_date}T00:00:00Z`),
+          departTime: ticketData.departTime
+            ? parseUTCTime(ticketData.travel_date, ticketData.departTime)
+            : new Date(`${ticketData.travel_date}T00:00:00Z`),
+          arrivalTime: ticketData.arrivalTime
+            ? parseUTCTime(ticketData.travel_date, ticketData.arrivalTime)
+            : new Date(`${ticketData.travel_date}T00:00:00Z`),
           price: ticketData.price || 0,
           payment_status: "Paid",
           refund_status: "None",
           tripType: ticketData.tripType || "oneway",
-          passenger_type: passengerTypeEnum[parseInt(ticketData.passenger_type)] || "Adult",
-          journey_segments: ticketData.journey_segments || JSON.stringify([]),
+          passenger_type:
+            passengerTypeEnum[parseInt(ticketData.passenger_type)] || "Adult",
+          journey_segments:
+            ticketData.journey_segments || JSON.stringify([]),
           train: { connect: { trainID: ticketData.trainID } },
           station_ticket_from_station_idTostation: {
             connect: { station_id: ticketData.from_station_id },
@@ -98,14 +89,30 @@ export async function POST(request) {
 
         createdTickets.push(ticket);
 
+        // ✅ CẬP NHẬT TRẠNG THÁI GHẾ DÙ KHÔNG CÓ seatID
         if (ticketData.seatID) {
           await prisma.seattrain.update({
             where: { seatID: ticketData.seatID },
             data: { is_available: false },
-          })
-        };
+          });
+        }  else if (!ticketData.seatID && ticketData.trainID && ticketData.coach_seat) {
+          const [coach, seat_number] = ticketData.coach_seat.split("-");
+        
+          await prisma.seattrain.updateMany({
+            where: {
+              trainID: ticketData.trainID,
+              coach,
+              seat_number,
+              seat_type: ticketData.seatType,
+              travel_date: new Date(ticketData.travel_date),
+            },
+            data: {
+              is_available: false,
+            },
+          });
+        }
 
-        // 3. Gắn thanh toán cho từng vé nếu có
+        // 3. Thêm thanh toán
         if (paymentData) {
           await prisma.payment_ticket.create({
             data: {
@@ -119,13 +126,11 @@ export async function POST(request) {
         }
       }
 
-      // Trả danh sách ticket_id
       return {
         booking_id: `BOOK_${Date.now()}`,
         ticket_ids: createdTickets.map((t) => t.ticket_id),
       };
     });
-    
 
     return NextResponse.json({
       success: true,
@@ -133,22 +138,12 @@ export async function POST(request) {
       ticket_ids: transaction.ticket_ids,
     });
   } catch (error) {
-    console.error("Error saving booking:", {
-      message: error.message,
-      stack: error.stack,
-      raw: error,
-    });
+    console.error("Error saving booking:", error);
     return NextResponse.json(
       {
         success: false,
-        error: "Lỗi khi lưu thông tin đặt vé",
-        details:
-          process.env.NODE_ENV === "development"
-            ? {
-                message: error.message,
-                error: error,
-              }
-            : undefined,
+        error: "Lỗi hệ thống",
+        details: process.env.NODE_ENV === "development" ? error.message : undefined,
       },
       { status: 500 }
     );
