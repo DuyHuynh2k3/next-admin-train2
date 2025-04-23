@@ -7,7 +7,7 @@ const config = {
   secretKey: "K951B6PE1waDMi640xX08PD3vg6EkVlz",
   orderInfo: "pay with MoMo",
   partnerCode: "MOMO",
-  redirectUrl: "http://localhost:3001/infoseat",
+  redirectUrl: "https://train-booking-kohl.vercel.app/infoSeat",
   ipnUrl: "https://0778-14-178-58-205.ngrok-free.app/api/callback",
   requestType: "payWithMethod",
   extraData: "",
