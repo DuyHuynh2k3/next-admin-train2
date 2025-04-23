@@ -22,7 +22,26 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "src/app/api/trains/[trainId].js"],
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    "src/app/api/trains/[trainId].js",
+    "src/app/api/seats/route_segments/route.ts",
+    "src/app/api/seats/route_segments/route.ts",
+    "src/app/api/seats/route.js",
+    "src/lib/prisma.ss"
+  ],
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    "src/app/api/seats/route_segments/route.ts",
+    "src/app/api/seats/route_segments/route.ts",
+    "src/app/api/seats/route.js",
+    "src/lib/prisma.ss"
+  ],
   "exclude": ["node_modules"]
 }

@@ -1,13 +1,11 @@
-// src/app/api/seats/route_segments/utils.ts
 import { PrismaClient } from "@prisma/client";
-import { GetStationSegments, StationSegment } from "./type";
 
 const prisma = new PrismaClient();
 
-export const getStationSegments: GetStationSegments = async (
-  trainID: number,
-  fromStationId: number,
-  toStationId: number
+export const getStationSegments = async (
+  trainID,
+  fromStationId,
+  toStationId
 ) => {
   try {
     const allStops = await prisma.train_stop.findMany({
@@ -33,7 +31,7 @@ export const getStationSegments: GetStationSegments = async (
       return [];
     }
 
-    const segments: StationSegment[] = [];
+    const segments = [];
     for (let i = fromIndex; i < toIndex; i++) {
       segments.push({
         from_station_id: allStops[i].station_id,
@@ -43,10 +41,7 @@ export const getStationSegments: GetStationSegments = async (
 
     return segments;
   } catch (error) {
-    console.error(
-      "Lỗi khi lấy đoạn ga: ",
-      error instanceof Error ? error.message : "Lỗi không xác định"
-    );
+    console.error("Error fetching station segments:", error.message);
     return [];
   } finally {
     await prisma.$disconnect();

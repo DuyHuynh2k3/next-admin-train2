@@ -1,7 +1,6 @@
-//src/app/api/seats/route.js:
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { getStationSegments } from "./route_segments/route";
+import { getStationSegments } from "../../../lib/seatUtils"; // Cập nhật đường dẫn import
 
 const prisma = new PrismaClient();
 
@@ -192,7 +191,7 @@ export async function GET(request) {
       return {
         seat_type,
         available: totalAvailable,
-        price: parseFloat(price.toFixed(2)), // Làm tròn đến 2 chữ số thập phân
+        price: parseFloat(price.toFixed(2)),
         coaches: coachKeys.map((coach) => ({
           coach,
           seat_numbers: coaches[coach] || [],
