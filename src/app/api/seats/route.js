@@ -1,3 +1,4 @@
+//src/app/api/seats/route.js:
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getStationSegments } from "./route_segments/route";
