@@ -166,7 +166,6 @@ export async function GET(request) {
 export async function POST(request) {
   let body;
   try {
-    // Lấy body từ request và lưu để sử dụng trong cả try và catch
     body = await request.json();
     console.log("Received request body:", body);
 
@@ -185,36 +184,18 @@ export async function POST(request) {
     ];
 
     const missingFields = requiredFields.filter((field) => {
-      if (!body[field]) {
-        console.log(`Missing field: ${field}`);
-        return true;
-      }
-
+      if (!body[field]) return true;
       if (
         (field === "stops" || field === "segments") &&
         (!Array.isArray(body[field]) || body[field].length === 0)
-      ) {
-        console.log(`Invalid ${field}: must be non-empty array`);
+      )
         return true;
-      }
-
       return false;
     });
 
     if (missingFields.length > 0) {
       return NextResponse.json(
-        {
-          error: "Missing or invalid required fields",
-          missingFields,
-          details: {
-            stops: body.stops
-              ? `Array with ${body.stops.length} items`
-              : "missing",
-            segments: body.segments
-              ? `Array with ${body.segments.length} items`
-              : "missing",
-          },
-        },
+        { error: "Missing or invalid required fields", missingFields },
         { status: 400 }
       );
     }
@@ -226,7 +207,6 @@ export async function POST(request) {
         { status: 400 }
       );
     }
-
     if (body.segments.length !== body.stops.length - 1) {
       return NextResponse.json(
         {
@@ -242,6 +222,14 @@ export async function POST(request) {
     if (!dateRegex.test(body.start_date) || !dateRegex.test(body.end_date)) {
       return NextResponse.json(
         { error: "Dates must be in YYYY-MM-DD format" },
+        { status: 400 }
+      );
+    }
+
+    // Validate end_date is not before start_date
+    if (new Date(body.end_date) < new Date(body.start_date)) {
+      return NextResponse.json(
+        { error: "End date cannot be before start date" },
         { status: 400 }
       );
     }
@@ -311,17 +299,38 @@ export async function POST(request) {
       }
     }
 
+    // Validate station_ids exist
+    const stationIds = [
+      ...body.stops.map((s) => parseInt(s.station_id)),
+      ...body.segments.map((s) => parseInt(s.from_station_id)),
+      ...body.segments.map((s) => parseInt(s.to_station_id)),
+    ];
+    const uniqueStationIds = [...new Set(stationIds)];
+    const existingStations = await prisma.station.findMany({
+      where: { station_id: { in: uniqueStationIds } },
+      select: { station_id: true },
+    });
+    const existingStationIds = existingStations.map((s) => s.station_id);
+    const missingStationIds = uniqueStationIds.filter(
+      (id) => !existingStationIds.includes(id)
+    );
+    if (missingStationIds.length > 0) {
+      return NextResponse.json(
+        { error: "Some station IDs do not exist", missingStationIds },
+        { status: 400 }
+      );
+    }
+
     const result = await prisma.$transaction(async (prisma) => {
-      // Kiểm tra xem trainID đã tồn tại chưa
+      // Check if trainID already exists
       const existingTrain = await prisma.train.findUnique({
         where: { trainID: parseInt(body.trainID) },
       });
-
       if (existingTrain) {
         throw new Error(`Train with trainID ${body.trainID} already exists`);
       }
 
-      // 1. Tạo tàu mới
+      // 1. Create new train
       const train = await prisma.train.create({
         data: {
           trainID: parseInt(body.trainID),
@@ -330,60 +339,33 @@ export async function POST(request) {
         },
       });
 
-      // 2. Tạo lịch trình lặp lại
+      // 2. Create train recurrence
       const recurrence = await prisma.train_recurrence.create({
         data: {
+          trainID: parseInt(body.trainID),
           start_date: new Date(body.start_date + "T00:00:00Z"),
           end_date: new Date(body.end_date + "T23:59:59Z"),
           days_of_week: body.days_of_week,
         },
       });
 
-      // 3. Tạo lịch trình chính
-      const departDateTime = new Date(
-        `${body.start_date}T${body.departTime}:00Z`
-      );
-      let arrivalDateTime = new Date(
-        `${body.start_date}T${body.arrivalTime}:00Z`
-      );
-
-      if (body.arrivalTime < body.departTime) {
-        arrivalDateTime.setDate(arrivalDateTime.getDate() + 1);
-      }
-
-      const schedule = await prisma.schedule.create({
-        data: {
+      // 3. Create train stops
+      await prisma.train_stop.createMany({
+        data: body.stops.map((stop, index) => ({
           trainID: parseInt(body.trainID),
-          recurrence_id: recurrence.recurrence_id,
-          departTime: departDateTime,
-          arrivalTime: arrivalDateTime,
-          status: "Scheduled",
-        },
+          station_id: parseInt(stop.station_id),
+          stop_order: index + 1,
+          arrival_time: stop.arrival_time
+            ? new Date(`${body.start_date}T${stop.arrival_time}:00Z`)
+            : null,
+          departure_time: stop.departure_time
+            ? new Date(`${body.start_date}T${stop.departure_time}:00Z`)
+            : null,
+          stop_duration: stop.stop_duration ? parseInt(stop.stop_duration) : 0,
+        })),
       });
 
-      // 4. Tạo các điểm dừng (train_stop)
-      await Promise.all(
-        body.stops.map((stop, index) =>
-          prisma.train_stop.create({
-            data: {
-              trainID: parseInt(body.trainID),
-              station_id: parseInt(stop.station_id),
-              stop_order: index + 1,
-              arrival_time: stop.arrival_time
-                ? new Date(`${body.start_date}T${stop.arrival_time}:00Z`)
-                : null,
-              departure_time: stop.departure_time
-                ? new Date(`${body.start_date}T${stop.departure_time}:00Z`)
-                : null,
-              stop_duration: stop.stop_duration
-                ? parseInt(stop.stop_duration)
-                : 0,
-            },
-          })
-        )
-      );
-
-      // 5. Tạo các chặng (route_segment)
+      // 4. Create or update route segments
       await Promise.all(
         body.segments.map((segment) =>
           prisma.route_segment.upsert({
@@ -407,24 +389,19 @@ export async function POST(request) {
         )
       );
 
-      // 6. Tạo ghế mẫu (seat_template)
-      // Hàm tạo ghế cho một toa
+      // 5. Create seat templates
       const generateSeatsForCoach = (coach, seatCount, seatType) => {
         const seats = [];
         for (let i = 1; i <= seatCount; i++) {
-          const seatNumber = i.toString().padStart(2, "0"); // Định dạng số ghế: 01, 02, ...
-
+          const seatNumber = i.toString().padStart(2, "0");
           let floor;
-          // Riêng toa C (C1, C2) chỉ có tầng 1 và 2
           if (coach.startsWith("C")) {
-            const floorCycle = (i - 1) % 4; // Chu kỳ 4 ghế (1-1, 2-2)
+            const floorCycle = (i - 1) % 4;
             floor = floorCycle < 2 ? 1 : 2;
           } else {
-            // Toa A, B: Giữ quy tắc 1-1, 2-2, 3-3
-            const floorCycle = (i - 1) % 6; // Chu kỳ 6 ghế (1-1, 2-2, 3-3)
+            const floorCycle = (i - 1) % 6;
             floor = floorCycle < 2 ? 1 : floorCycle < 4 ? 2 : 3;
           }
-
           seats.push({
             coach,
             seat_number: seatNumber,
@@ -435,37 +412,30 @@ export async function POST(request) {
         return seats;
       };
 
-      // Tạo ghế cho các toa (áp dụng cho mọi trainID)
       const seatTemplates = [
-        ...generateSeatsForCoach("A1", 48, "soft"), // 48 ghế cho A1
-        ...generateSeatsForCoach("A2", 48, "soft"), // 48 ghế cho A2
-        ...generateSeatsForCoach("B1", 48, "hard_sleeper_6"), // 48 ghế cho B1
-        ...generateSeatsForCoach("B2", 48, "hard_sleeper_6"), // 48 ghế cho B2
-        ...generateSeatsForCoach("C1", 32, "hard_sleeper_4"), // 32 ghế cho C1
-        ...generateSeatsForCoach("C2", 32, "hard_sleeper_4"), // 32 ghế cho C2
+        ...generateSeatsForCoach("A1", 48, "soft"),
+        ...generateSeatsForCoach("A2", 48, "soft"),
+        ...generateSeatsForCoach("B1", 48, "hard_sleeper_6"),
+        ...generateSeatsForCoach("B2", 48, "hard_sleeper_6"),
+        ...generateSeatsForCoach("C1", 32, "hard_sleeper_4"),
+        ...generateSeatsForCoach("C2", 32, "hard_sleeper_4"),
       ];
 
-      // Tạo các bản ghi trong seat_template
-      await Promise.all(
-        seatTemplates.map((template) =>
-          prisma.seat_template.create({
-            data: {
-              trainID: parseInt(body.trainID),
-              coach: template.coach,
-              seat_number: template.seat_number,
-              seat_type: template.seat_type,
-              floor: template.floor,
-            },
-          })
-        )
-      );
+      await prisma.seat_template.createMany({
+        data: seatTemplates.map((template) => ({
+          trainID: parseInt(body.trainID),
+          coach: template.coach,
+          seat_number: template.seat_number,
+          seat_type: template.seat_type,
+          floor: template.floor,
+        })),
+      });
 
-      return { train, schedule, recurrence };
+      return { train, recurrence };
     });
 
-    // 7. Gọi stored procedure để tạo ghế cho lịch trình (tạo seattrain)
+    // 6. Call stored procedure to generate seats
     const connection = await mysql.createConnection(process.env.DATABASE_URL);
-
     try {
       await connection.execute(
         `CALL GenerateSeatsForSchedulePeriod(?, ?, ?, ?, ?)`,
@@ -477,6 +447,8 @@ export async function POST(request) {
           body.arrivalTime,
         ]
       );
+    } catch (error) {
+      throw new Error(`Stored procedure failed: ${error.message}`);
     } finally {
       await connection.end();
     }
@@ -484,7 +456,6 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       trainID: result.train.trainID,
-      scheduleID: result.schedule.schedule_id,
       recurrenceID: result.recurrence.recurrence_id,
       message: "Train created successfully",
     });
@@ -494,7 +465,7 @@ export async function POST(request) {
       {
         error: "Failed to create train",
         details: error.message,
-        receivedBody: body || (await request.json().catch(() => ({}))),
+        receivedBody: body || {},
       },
       { status: 500 }
     );
@@ -512,6 +483,7 @@ export async function PUT(request) {
         { error: "Train ID is required" },
         { status: 400 }
       );
+      EH;
     }
 
     await prisma.$transaction(async (prisma) => {
@@ -611,7 +583,7 @@ export async function PUT(request) {
           where: {
             OR: [
               {
-                from_station_id: {
+                from駅_id: {
                   in: updates.segments.map((s) => parseInt(s.from_station_id)),
                 },
               },
@@ -661,7 +633,7 @@ export async function DELETE(request) {
 
     if (!trainID) {
       return NextResponse.json(
-        { error: "Train ID is required" },
+        { error: "Mã chuyến tàu (trainID) là bắt buộc" },
         { status: 400 }
       );
     }
@@ -675,57 +647,61 @@ export async function DELETE(request) {
 
     if (!train) {
       return NextResponse.json(
-        { error: `Train with trainID ${trainID} not found` },
+        { error: `Không tìm thấy chuyến tàu với trainID ${trainID}` },
         { status: 404 }
       );
     }
 
     await prisma.$transaction(async (prisma) => {
-      // 1. Lấy tất cả các lịch trình (schedule) liên quan đến trainID
-      const schedules = await prisma.schedule.findMany({
+      // 1. Xóa tất cả các lịch trình liên quan đến trainID
+      await prisma.schedule.deleteMany({
         where: { trainID: trainIdNum },
-        select: { recurrence_id: true },
       });
 
-      if (schedule) {
-        await prisma.schedule.delete({
-          where: { schedule_id: schedule.schedule_id },
-        });
+      // 2. Xóa các train_recurrence liên quan đến trainID
+      await prisma.train_recurrence.deleteMany({
+        where: { trainID: trainIdNum },
+      });
 
-        await prisma.train_recurrence.delete({
-          where: { recurrence_id: schedule.recurrence_id },
-        });
-      }
-
-      // 4. Xóa tất cả các bản ghi trong train_stop liên quan đến trainID
+      // 3. Xóa tất cả các bản ghi trong train_stop
       await prisma.train_stop.deleteMany({
         where: { trainID: trainIdNum },
       });
 
-      // 5. Xóa tất cả các bản ghi trong seat_template liên quan đến trainID
+      // 4. Xóa tất cả các bản ghi trong seat_template
       await prisma.seat_template.deleteMany({
         where: { trainID: trainIdNum },
       });
 
-      // 6. Xóa tất cả các bản ghi trong seattrain liên quan đến trainID
+      // 5. Xóa tất cả các bản ghi trong seat_availability_segment
+      await prisma.seat_availability_segment.deleteMany({
+        where: { trainID: trainIdNum },
+      });
+
+      // 6. Xóa tất cả các bản ghi trong seattrain
       await prisma.seattrain.deleteMany({
         where: { trainID: trainIdNum },
       });
 
-      // 7. Cuối cùng, xóa bản ghi trong train
+      // 7. Xóa các vé (ticket) liên quan
+      await prisma.ticket.deleteMany({
+        where: { trainID: trainIdNum },
+      });
+
+      // 8. Xóa bản ghi trong train
       await prisma.train.delete({
         where: { trainID: trainIdNum },
       });
     });
 
     return NextResponse.json(
-      { message: `Train with trainID ${trainID} deleted successfully` },
+      { message: `Chuyến tàu với trainID ${trainID} đã được xóa thành công` },
       { status: 200 }
     );
   } catch (error) {
-    console.error("Error deleting train:", error);
+    console.error("Lỗi khi xóa chuyến tàu:", error);
     return NextResponse.json(
-      { error: "Failed to delete train", details: error.message },
+      { error: "Không thể xóa chuyến tàu", details: error.message },
       { status: 500 }
     );
   } finally {

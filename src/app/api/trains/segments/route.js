@@ -1,3 +1,4 @@
+//src/app/api/trains/segments/route.js
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 

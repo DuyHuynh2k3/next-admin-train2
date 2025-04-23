@@ -90,22 +90,27 @@ model ticket {
 }
 
 model train {
-  trainID       Int             @id
-  train_name    String          @db.VarChar(100)
-  total_seats   Int
-  schedule      schedule[]
-  seat_template seat_template[]
-  seattrain     seattrain[]
-  ticket        ticket[]
-  train_stop    train_stop[]
+  trainID                   Int                         @id
+  train_name                String                      @db.VarChar(100)
+  total_seats               Int
+  schedule                  schedule[]
+  seat_template             seat_template[]
+  seattrain                 seattrain[]
+  ticket                    ticket[]
+  train_stop                train_stop[]
+  train_recurrence          train_recurrence[]
+  seat_availability_segment seat_availability_segment[]
 }
 
 model train_recurrence {
   recurrence_id Int        @id @default(autoincrement())
+  trainID       Int // Thêm trường trainID
   start_date    DateTime   @db.Date
   end_date      DateTime   @db.Date
   days_of_week  String     @db.VarChar(7)
   schedule      schedule[]
+  train         train      @relation(fields: [trainID], references: [trainID])
+  @@index([trainID])
 }
 
 model payment_ticket {
@@ -138,13 +143,15 @@ model admin {
 }
 
 model station {
-  station_id                                           Int             @id
-  station_name                                         String          @db.VarChar(100)
-  route_segment_route_segment_from_station_idTostation route_segment[] @relation("route_segment_from_station_idTostation")
-  route_segment_route_segment_to_station_idTostation   route_segment[] @relation("route_segment_to_station_idTostation")
-  ticket_ticket_from_station_idTostation               ticket[]        @relation("ticket_from_station_idTostation")
-  ticket_ticket_to_station_idTostation                 ticket[]        @relation("ticket_to_station_idTostation")
+  station_id                                           Int                         @id
+  station_name                                         String                      @db.VarChar(100)
+  route_segment_route_segment_from_station_idTostation route_segment[]             @relation("route_segment_from_station_idTostation")
+  route_segment_route_segment_to_station_idTostation   route_segment[]             @relation("route_segment_to_station_idTostation")
+  ticket_ticket_from_station_idTostation               ticket[]                    @relation("ticket_from_station_idTostation")
+  ticket_ticket_to_station_idTostation                 ticket[]                    @relation("ticket_to_station_idTostation")
   train_stop                                           train_stop[]
+  seat_availability_segment_from                       seat_availability_segment[] @relation("from_station")
+  seat_availability_segment_to                         seat_availability_segment[] @relation("to_station")
 }
 
 model route_segment {
@@ -178,7 +185,6 @@ model train_stop {
   @@index([departure_time], map: "idx_departure")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model seat_template {
   template_id Int                     @id @default(autoincrement())
   trainID     Int
@@ -192,18 +198,38 @@ model seat_template {
 }
 
 model seattrain {
-  seatID       Int      @id @default(autoincrement())
-  trainID      Int
-  travel_date  DateTime @db.Date
-  coach        String   @db.VarChar(10)
-  seat_number  String   @db.VarChar(10)
-  seat_type    String?  @db.VarChar(20)
-  is_available Boolean  @default(true)
-  train        train    @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "seattrain_ibfk_1")
-  ticket       ticket[]
+  seatID                    Int                         @id @default(autoincrement())
+  trainID                   Int
+  travel_date               DateTime                    @db.Date
+  coach                     String                      @db.VarChar(10)
+  seat_number               String                      @db.VarChar(10)
+  seat_type                 String?                     @db.VarChar(20)
+  is_available              Boolean                     @default(true)
+  train                     train                       @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "seattrain_ibfk_1")
+  ticket                    ticket[]
+  seat_availability_segment seat_availability_segment[] @relation("SeatToAvailability")
 
   @@unique([trainID, travel_date, coach, seat_number], map: "trainID")
   @@index([trainID, travel_date, is_available], map: "idx_seatrain_date")
+}
+
+model seat_availability_segment {
+  segment_availability_id Int       @id @default(autoincrement())
+  seatID                  Int
+  trainID                 Int
+  travel_date             DateTime  @db.Date
+  from_station_id         Int
+  to_station_id           Int
+  is_available            Boolean   @default(true)
+  seattrain               seattrain @relation("SeatToAvailability", fields: [seatID], references: [seatID])
+  train                   train     @relation(fields: [trainID], references: [trainID])
+  from_station            station   @relation("from_station", fields: [from_station_id], references: [station_id])
+  to_station              station   @relation("to_station", fields: [to_station_id], references: [station_id])
+
+  @@unique([seatID, trainID, travel_date, from_station_id, to_station_id], map: "unique_seat_segment")
+  @@index([from_station_id], map: "from_station_id")
+  @@index([to_station_id], map: "to_station_id")
+  @@index([trainID], map: "trainID")
 }
 
 model blog {

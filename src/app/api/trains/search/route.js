@@ -1,21 +1,19 @@
+// src/app/api/trains/search/route.js
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-// GET /api/trains/search
 export async function GET(req) {
   const queryParams = req.nextUrl.searchParams;
   const departureStation = queryParams.get("departureStation");
   const arrivalStation = queryParams.get("arrivalStation");
   const departureDate = queryParams.get("departureDate");
-  const returnDate = queryParams.get("returnDate"); // 👈 thêm dòng này
+  const returnDate = queryParams.get("returnDate");
 
   if (!departureStation || !arrivalStation || !departureDate) {
     return NextResponse.json(
-      {
-        error: "Vui lòng cung cấp ga đi, ga đến và ngày đi.",
-      },
+      { error: "Vui lòng cung cấp ga đi, ga đến và ngày đi." },
       { status: 400 }
     );
   }
@@ -23,10 +21,8 @@ export async function GET(req) {
   const parseDateRange = (dateStr) => {
     const start = new Date(dateStr);
     start.setHours(0, 0, 0, 0);
-
     const end = new Date(dateStr);
     end.setHours(23, 59, 59, 999);
-
     return { start, end };
   };
 
@@ -73,49 +69,41 @@ export async function GET(req) {
 
   const validOutbound = outboundTrains.filter((train) => {
     const stops = train.train_stop;
-  
-    const dStop = stops.find((s) => s.station.station_name === departureStation);
-    const aStop = stops.find((s) => s.station.station_name === arrivalStation);
-  
-    if (!dStop || !aStop) return false;
-  
-    // Đảm bảo chiều đi đúng (ga đến sau ga đi)
-    if (aStop.stop_order <= dStop.stop_order) return false;
-  
-    // Kiểm tra xem có ga nào sau ga đến không — nếu có thì loại
-    const hasStopAfterArrival = stops.some(
-      (s) => s.stop_order > aStop.stop_order
+    const dStop = stops.find(
+      (s) => s.station.station_name === departureStation
     );
-    if (hasStopAfterArrival) return false;
-  
-    return true;
+    const aStop = stops.find((s) => s.station.station_name === arrivalStation);
+    return dStop && aStop && aStop.stop_order > dStop.stop_order;
   });
-  
 
-  // Nếu có returnDate, xử lý chiều về
+  // Xử lý chiều về (nếu có)
   let validReturn = [];
-
   if (returnDate) {
     const { start: startReturn, end: endReturn } = parseDateRange(returnDate);
-
     const returnTrains = await prisma.train.findMany({
       where: {
-        train_stop: {
-          some: { station: { station_name: arrivalStation } },
-        },
-        AND: {
-          train_stop: {
-            some: { station: { station_name: departureStation } },
-          },
-        },
-        schedule: {
-          some: {
-            departTime: {
-              gte: startReturn,
-              lte: endReturn,
+        AND: [
+          {
+            train_stop: {
+              some: { station: { station_name: arrivalStation } },
             },
           },
-        },
+          {
+            train_stop: {
+              some: { station: { station_name: departureStation } },
+            },
+          },
+          {
+            schedule: {
+              some: {
+                departTime: {
+                  gte: startReturn,
+                  lte: endReturn,
+                },
+              },
+            },
+          },
+        ],
       },
       include: {
         train_stop: { include: { station: true } },
@@ -132,17 +120,19 @@ export async function GET(req) {
 
     validReturn = returnTrains.filter((train) => {
       const stops = train.train_stop;
-      const dStop = stops.find((s) => s.station.station_name === arrivalStation);
-      const aStop = stops.find((s) => s.station.station_name === departureStation);
+      const dStop = stops.find(
+        (s) => s.station.station_name === arrivalStation
+      );
+      const aStop = stops.find(
+        (s) => s.station.station_name === departureStation
+      );
       return dStop && aStop && aStop.stop_order > dStop.stop_order;
     });
   }
 
+  console.log("validOutbound:", validOutbound);
   const response = NextResponse.json(
-    {
-      outbound: validOutbound,
-      return: validReturn,
-    },
+    { outbound: validOutbound, return: validReturn },
     { status: 200 }
   );
 

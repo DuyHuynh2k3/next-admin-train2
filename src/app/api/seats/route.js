@@ -1,164 +1,214 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getStationSegments } from "./route_segments/route";
 
 const prisma = new PrismaClient();
 
-const seatTypePriceMultiplier = {
-  soft: 1,
-  hard_sleeper_4: 1.1,
-  hard_sleeper_6: 1.2,
+// Hàm tính hệ số nhân dựa trên seat_type
+const getSeatTypeMultiplier = (seatType) => {
+  switch (seatType) {
+    case "soft":
+      return 1.0;
+    case "hard_sleeper_6":
+      return 1.1;
+    case "hard_sleeper_4":
+      return 1.2;
+    default:
+      return 1.0;
+  }
 };
 
-export async function GET(req) {
+export async function GET(request) {
   try {
-    const queryParams = req.nextUrl.searchParams;
+    const { searchParams } = new URL(request.url);
+    const trainID = parseInt(searchParams.get("trainID"));
+    const travelDate = searchParams.get("travel_date");
+    const fromStationID = parseInt(searchParams.get("from_station_id"));
+    const toStationID = parseInt(searchParams.get("to_station_id"));
 
-    const trainID = parseInt(queryParams.get("trainID"));
-    const travelDate = queryParams.get("travel_date");
-    const fromStationID = parseInt(queryParams.get("from_station_id"));
-    const toStationID = parseInt(queryParams.get("to_station_id"));
+    console.log("trainID:", trainID);
+    console.log("travelDate:", travelDate);
 
     if (!trainID || !travelDate || !fromStationID || !toStationID) {
       return NextResponse.json(
-        { error: "Thiếu tham số trainID, travel_date, from_station_id hoặc to_station_id" },
+        { error: "Missing required parameters" },
         { status: 400 }
       );
     }
 
-    const date = new Date(travelDate);
+    const dateStart = new Date(travelDate);
+    dateStart.setUTCHours(0, 0, 0, 0);
+    console.log("Converted Date:", dateStart);
 
-    const stops = await prisma.train_stop.findMany({
-      where: { trainID },
-      orderBy: { stop_order: "asc" },
-      select: {
-        station_id: true,
-        stop_order: true,
+    const seats = await prisma.seattrain.findMany({
+      where: {
+        trainID: trainID,
+        travel_date: dateStart,
       },
     });
 
-    const fromStop = stops.find((s) => s.station_id === fromStationID);
-    const toStop = stops.find((s) => s.station_id === toStationID);
+    console.log("Seats Before Availability for trainID", trainID, ":", seats);
 
-    if (!fromStop || !toStop) {
+    if (seats.length === 0) {
       return NextResponse.json(
-        { error: "Không tìm thấy ga xuất phát hoặc ga đến trong train_stop." },
+        { error: "No seats found for this train on the specified date" },
         { status: 404 }
       );
     }
 
-    const [minOrder, maxOrder] = [fromStop.stop_order, toStop.stop_order].sort((a, b) => a - b);
+    const seatIDs = seats.map((seat) => seat.seatID);
 
-    const segmentsToSum = [];
-    for (let i = minOrder; i < maxOrder; i++) {
-      const from = stops.find((s) => s.stop_order === i)?.station_id;
-      const to = stops.find((s) => s.stop_order === i + 1)?.station_id;
-      if (from && to) {
-        segmentsToSum.push({ from, to });
-      }
+    const segments = await getStationSegments(
+      trainID,
+      fromStationID,
+      toStationID
+    );
+    const segmentsToSum = segments.map((segment) => ({
+      from: parseInt(segment.from_station_id),
+      to: parseInt(segment.to_station_id),
+    }));
+
+    if (segmentsToSum.length === 0) {
+      return NextResponse.json(
+        { error: "No route segments found between the stations" },
+        { status: 400 }
+      );
     }
 
-    let totalBasePrice = 0;
+    const availabilitySegments = [];
     for (const segment of segmentsToSum) {
-      const routeSegment = await prisma.route_segment.findUnique({
-        where: {
-          from_station_id_to_station_id: {
+      const segmentAvailability =
+        await prisma.seat_availability_segment.findMany({
+          where: {
+            seatID: { in: seatIDs },
+            trainID: trainID,
+            travel_date: dateStart,
             from_station_id: segment.from,
             to_station_id: segment.to,
+            is_available: true,
           },
+        });
+      availabilitySegments.push(...segmentAvailability);
+    }
+
+    console.log(
+      "Availability Segments for trainID",
+      trainID,
+      ":",
+      availabilitySegments
+    );
+
+    const seatsWithAvailability = seats.map((seat) => {
+      const seatAvailability = availabilitySegments.filter(
+        (avail) => avail.seatID === seat.seatID
+      );
+      return {
+        ...seat,
+        seat_availability_segment: seatAvailability,
+      };
+    });
+
+    console.log(
+      "Seats With Availability for trainID",
+      trainID,
+      ":",
+      seatsWithAvailability
+    );
+
+    const availableSeats = seatsWithAvailability.filter((seat) => {
+      const availabilitySegments = seat.seat_availability_segment;
+      return segmentsToSum.every((segment) =>
+        availabilitySegments.some(
+          (avail) =>
+            avail.from_station_id === segment.from &&
+            avail.to_station_id === segment.to &&
+            avail.is_available
+        )
+      );
+    });
+
+    console.log(
+      "Available Seats After Filter for trainID",
+      trainID,
+      ":",
+      availableSeats
+    );
+
+    // Tính tổng base_price từ route_segment
+    let totalBasePrice = 0;
+    for (const segment of segmentsToSum) {
+      const routeSegment = await prisma.route_segment.findFirst({
+        where: {
+          from_station_id: segment.from,
+          to_station_id: segment.to,
         },
       });
 
       if (!routeSegment) {
         return NextResponse.json(
-          { error: `Không tìm thấy route_segment từ ${segment.from} đến ${segment.to}` },
-          { status: 404 }
+          {
+            error: `No route segment found between stations ${segment.from} and ${segment.to}`,
+          },
+          { status: 400 }
         );
       }
 
       totalBasePrice += parseFloat(routeSegment.base_price);
     }
 
-    // ❗ Lấy tất cả các ghế (không lọc is_available)
-    const allSeats = await prisma.seattrain.findMany({
-      where: {
-        trainID,
-        travel_date: date,
-      },
-      select: {
-        coach: true,
-        seat_number: true,
+    console.log("Total Base Price for segments:", totalBasePrice);
+
+    // Nhóm ghế theo seat_type và coach
+    const seatMap = {};
+    availableSeats.forEach((seat) => {
+      const seat_type = seat.seat_type;
+      const coach = seat.coach;
+
+      if (!seatMap[seat_type]) {
+        seatMap[seat_type] = {};
+      }
+      if (!seatMap[seat_type][coach]) {
+        seatMap[seat_type][coach] = [];
+      }
+      seatMap[seat_type][coach].push({
+        seat_number: seat.seat_number,
         is_available: true,
-      },
+      });
     });
 
-    const seatTemplates = await prisma.seat_template.findMany({
-      where: { trainID },
-      select: {
-        coach: true,
-        seat_number: true,
-        seat_type: true,
-        floor: true,
-      },
-    });
-
-    const resultMap = {};
-
-    for (const seat of allSeats) {
-      const matched = seatTemplates.find(
-        (t) => t.coach === seat.coach && t.seat_number === seat.seat_number
+    // Tính giá vé cho từng seat_type
+    const formattedResult = Object.keys(seatMap).map((seat_type) => {
+      const coaches = seatMap[seat_type] || {};
+      const coachKeys = Object.keys(coaches);
+      const totalAvailable = coachKeys.reduce(
+        (sum, coach) => sum + (coaches[coach]?.length || 0),
+        0
       );
 
-      if (matched) {
-        const type = matched.seat_type;
+      const multiplier = getSeatTypeMultiplier(seat_type);
+      const price = totalBasePrice * multiplier;
 
-        if (!resultMap[type]) {
-          resultMap[type] = {
-            seat_type: type,
-            available: 0,
-            price: parseFloat((totalBasePrice * (seatTypePriceMultiplier[type] || 1)).toFixed(2)),
-            coaches: {},
-          };
-        }
+      return {
+        seat_type,
+        available: totalAvailable,
+        price: parseFloat(price.toFixed(2)), // Làm tròn đến 2 chữ số thập phân
+        coaches: coachKeys.map((coach) => ({
+          coach,
+          seat_numbers: coaches[coach] || [],
+        })),
+      };
+    });
 
-        if (seat.is_available) {
-          resultMap[type].available += 1;
-        }
+    console.log("Formatted Result for trainID", trainID, ":", formattedResult);
 
-        if (!resultMap[type].coaches[seat.coach]) {
-          resultMap[type].coaches[seat.coach] = {
-            available: 0,
-            seat_numbers: [],
-          };
-        }
-
-        if (seat.is_available) {
-          resultMap[type].coaches[seat.coach].available += 1;
-        }
-
-        resultMap[type].coaches[seat.coach].seat_numbers.push({
-          seat_number: seat.seat_number,
-          floor: matched.floor,
-          is_available: seat.is_available,
-        });
-      }
-    }
-
-    const formattedResult = Object.values(resultMap).map((entry) => ({
-      ...entry,
-      coaches: Object.entries(entry.coaches).map(([coach, data]) => ({
-        coach,
-        available: data.available,
-        seat_numbers: data.seat_numbers,
-      })),
-    }));
-
-    return NextResponse.json(formattedResult, { status: 200 });
-
-  } catch (err) {
-    console.error("Lỗi API ghế:", err);
-    return NextResponse.json({ error: "Lỗi server", detail: err.message }, { status: 500 });
+    return NextResponse.json(formattedResult);
+  } catch (error) {
+    console.error("Error fetching seats:", error.message);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   } finally {
     await prisma.$disconnect();
   }
 }
-

@@ -1,3 +1,4 @@
+//src/app/api/ticket/route.js:
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -195,7 +196,6 @@ export async function DELETE(request) {
     );
   }
 }
-
 
 export async function PUT(request) {
   const { ticket_id, passport, fullName, phoneNumber, email } =
