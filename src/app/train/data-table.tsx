@@ -269,19 +269,18 @@ export function DataTableTrain() {
       "days_of_week",
     ];
 
-    // Kiểm tra các trường bắt buộc
     for (const field of requiredFields) {
-      if (!newTrain[field]) {
+      if (!newTrain[field as keyof Train]) {
         toast.error(`Vui lòng điền đầy đủ thông tin cho trường ${field}!`);
         return;
       }
     }
 
-    // Kiểm tra số lượng ga và chặng
     if (!newTrain.stops || newTrain.stops.length < 2) {
       toast.error("Phải có ít nhất 2 ga!");
       return;
     }
+
     if (
       !newTrain.segments ||
       newTrain.segments.length !== newTrain.stops.length - 1
@@ -290,46 +289,14 @@ export function DataTableTrain() {
       return;
     }
 
-    // Kiểm tra định dạng thời gian
-    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
-    if (
-      !timeRegex.test(newTrain.departTime) ||
-      !timeRegex.test(newTrain.arrivalTime)
-    ) {
-      toast.error("Thời gian phải ở định dạng HH:MM!");
-      return;
-    }
-
-    // Kiểm tra định dạng ngày
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (
-      !dateRegex.test(newTrain.start_date) ||
-      !dateRegex.test(newTrain.end_date)
-    ) {
-      toast.error("Ngày phải ở định dạng YYYY-MM-DD!");
-      return;
-    }
-
-    // Kiểm tra end_date không trước start_date
-    if (new Date(newTrain.end_date) < new Date(newTrain.start_date)) {
-      toast.error("Ngày kết thúc không thể trước ngày bắt đầu!");
-      return;
-    }
-
-    // Kiểm tra days_of_week
-    if (!/^[01]{7}$/.test(newTrain.days_of_week)) {
-      toast.error("days_of_week phải là chuỗi 7 ký tự 0 hoặc 1!");
-      return;
-    }
-
     try {
       const response = await fetch("/api/trains", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          trainID: parseInt(newTrain.trainID || "0"),
+          trainID: parseInt(newTrain.trainID?.toString() || "0"),
           train_name: newTrain.train_name,
-          total_seats: parseInt(newTrain.total_seats || "0"),
+          total_seats: parseInt(newTrain.total_seats?.toString() || "0"),
           departTime: newTrain.departTime,
           arrivalTime: newTrain.arrivalTime,
           start_date: newTrain.start_date,
@@ -349,7 +316,6 @@ export function DataTableTrain() {
         setNewTrain({ stops: [], segments: [] });
       } else {
         toast.error(data.error || "Thêm chuyến tàu thất bại");
-        console.error("API error details:", data.details);
       }
     } catch (error) {
       console.error("Error adding train:", error);

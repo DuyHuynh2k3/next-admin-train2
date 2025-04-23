@@ -483,7 +483,6 @@ export async function PUT(request) {
         { error: "Train ID is required" },
         { status: 400 }
       );
-      EH;
     }
 
     await prisma.$transaction(async (prisma) => {
