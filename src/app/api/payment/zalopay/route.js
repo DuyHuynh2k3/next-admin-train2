@@ -32,7 +32,7 @@ export async function POST(request) {
     }
 
     const embed_data = {
-      redirecturl: "http://localhost:3001/infoseat",
+      redirecturl: "https://train-booking-kohl.vercel.app/infoseat",
     };
     const items = [];
     const transID = orderId || Math.floor(Math.random() * 1000000);
