@@ -6,7 +6,7 @@ const config = {
   secretKey: "K951B6PE1waDMi640xX08PD3vg6EkVlz",
   orderInfo: "pay with MoMo",
   partnerCode: "MOMO",
-  redirectUrl: `https://train-booking-henna.vercel.app/infoSeat`, // Sử dụng URL động
+  redirectUrl: `http://localhost:3001/infoSeat`, // Sử dụng URL động
   ipnUrl: "https://0778-14-178-58-205.ngrok-free.app/api/callback", // Cần thay bằng URL callback thực tế khi deploy
   requestType: "payWithMethod",
   extraData: "",
