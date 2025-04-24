@@ -29,7 +29,7 @@ export async function POST(request) {
     }
 
     const embed_data = {
-      redirecturl: `http://localhost:3001/infoSeat`, // Sử dụng URL động
+      redirecturl: `train-booking-henna.vercel.app/infoSeat`, // Sử dụng URL động
     };
     const items = [];
     const transID = orderId || Math.floor(Math.random() * 1000000);
