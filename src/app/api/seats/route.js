@@ -117,14 +117,14 @@ export async function GET(request) {
 
     const availableSeats = seatsWithAvailability.filter((seat) => {
       const availabilitySegments = seat.seat_availability_segment;
-      return segmentsToSum.every((segment) =>
-        availabilitySegments.some(
+      return segmentsToSum.every((segment) => {
+        const match = availabilitySegments.find(
           (avail) =>
             avail.from_station_id === segment.from &&
-            avail.to_station_id === segment.to &&
-            avail.is_available
-        )
-      );
+            avail.to_station_id === segment.to
+        );
+        return match && match.is_available === true;
+      });
     });
 
     console.log(
@@ -160,7 +160,7 @@ export async function GET(request) {
 
     // Nhóm ghế theo seat_type và coach
     const seatMap = {};
-    availableSeats.forEach((seat) => {
+    seats.forEach((seat) => {
       const seat_type = seat.seat_type;
       const coach = seat.coach;
 
@@ -170,9 +170,14 @@ export async function GET(request) {
       if (!seatMap[seat_type][coach]) {
         seatMap[seat_type][coach] = [];
       }
+
+      const isAvailable = availableSeats.some(
+        (availableSeat) => availableSeat.seatID === seat.seatID
+      );
+
       seatMap[seat_type][coach].push({
         seat_number: seat.seat_number,
-        is_available: true,
+        is_available: isAvailable,
       });
     });
 
@@ -181,7 +186,8 @@ export async function GET(request) {
       const coaches = seatMap[seat_type] || {};
       const coachKeys = Object.keys(coaches);
       const totalAvailable = coachKeys.reduce(
-        (sum, coach) => sum + (coaches[coach]?.length || 0),
+        (sum, coach) =>
+          sum + coaches[coach].filter((s) => s.is_available === true).length,
         0
       );
 
