@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { getStationSegments } from "./route_segments/route";
+import { getStationSegments } from "@/lib/stationSegments";
 
 const prisma = new PrismaClient();
 

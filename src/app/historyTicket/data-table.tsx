@@ -135,37 +135,37 @@ export function DataTableTicket() {
     });
   }, [ticketData, debouncedSearchText]);
 
-  const handleDelete = async (ticket_id: number) => {
-    const confirmDelete = window.confirm("Bạn có chắc muốn xóa vé này?");
-    if (confirmDelete) {
-      try {
-        const response = await fetch(`/api/ticket?ticket_id=${ticket_id}`, {
-          method: "DELETE",
-        });
+  // const handleDelete = async (ticket_id: number) => {
+  //   const confirmDelete = window.confirm("Bạn có chắc muốn xóa vé này?");
+  //   if (confirmDelete) {
+  //     try {
+  //       const response = await fetch(`/api/ticket?ticket_id=${ticket_id}`, {
+  //         method: "DELETE",
+  //       });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "Xóa vé thất bại");
-        }
+  //       if (!response.ok) {
+  //         const errorData = await response.json();
+  //         throw new Error(errorData.error || "Xóa vé thất bại");
+  //       }
 
-        // Refresh the ticket list
-        const res = await fetch(`/api/ticket?limit=${limit}`);
-        if (!res.ok) {
-          throw new Error("Không thể tải lại danh sách vé");
-        }
-        const updatedData = await res.json();
-        setTicketData(updatedData);
+  //       // Refresh the ticket list
+  //       const res = await fetch(`/api/ticket?limit=${limit}`);
+  //       if (!res.ok) {
+  //         throw new Error("Không thể tải lại danh sách vé");
+  //       }
+  //       const updatedData = await res.json();
+  //       setTicketData(updatedData);
 
-        setError(null);
-        alert("Xóa vé thành công!");
-      } catch (error) {
-        console.error("Lỗi khi xóa vé:", error);
-        setError(
-          error instanceof Error ? error.message : "Có lỗi xảy ra khi xóa vé"
-        );
-      }
-    }
-  };
+  //       setError(null);
+  //       alert("Xóa vé thành công!");
+  //     } catch (error) {
+  //       console.error("Lỗi khi xóa vé:", error);
+  //       setError(
+  //         error instanceof Error ? error.message : "Có lỗi xảy ra khi xóa vé"
+  //       );
+  //     }
+  //   }
+  // };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -528,7 +528,7 @@ export function DataTableTicket() {
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label className="text-right font-medium">Ngày đi:</Label>
                 <div className="col-span-3">
-                  {(selectedTicketView.travel_date)}
+                  {selectedTicketView.travel_date}
                 </div>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">

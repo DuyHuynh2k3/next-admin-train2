@@ -1,9 +1,7 @@
 //src/app/api/callback/zalopay
 import { NextResponse } from "next/server";
 import moment from "moment-timezone"; // Sử dụng moment-timezone
-import { NextResponse } from "next/server";
 import { createHmac } from "crypto"; // <-- Sử dụng built-in module
-import moment from "moment-timezone";
 
 const config = {
   key2: process.env.ZALOPAY_KEY2,

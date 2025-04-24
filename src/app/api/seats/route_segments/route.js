@@ -1,50 +1,29 @@
-//src/app/api/seats/route_segments/route.js:
-import { PrismaClient } from "@prisma/client";
+// src/app/api/seats/route_segments/route.js
+import { NextResponse } from "next/server";
+import { getStationSegments } from "@/lib/stationSegments";
 
-const prisma = new PrismaClient();
-
-export const getStationSegments = async (
-  trainID,
-  fromStationId,
-  toStationId
-) => {
+export async function GET(request) {
   try {
-    const allStops = await prisma.train_stop.findMany({
-      where: {
-        trainID: trainID, // Sử dụng trainID từ tham số
-      },
-      orderBy: {
-        stop_order: "asc",
-      },
-      include: {
-        station: true,
-      },
-    });
+    const { searchParams } = new URL(request.url);
+    const trainID = parseInt(searchParams.get("trainID"));
+    const fromStationID = parseInt(searchParams.get("from_station_id"));
+    const toStationID = parseInt(searchParams.get("to_station_id"));
 
-    const fromIndex = allStops.findIndex(
-      (stop) => stop.station_id === fromStationId
-    );
-    const toIndex = allStops.findIndex(
-      (stop) => stop.station_id === toStationId
-    );
-
-    if (fromIndex === -1 || toIndex === -1 || fromIndex >= toIndex) {
-      return [];
+    if (!trainID || !fromStationID || !toStationID) {
+      return NextResponse.json(
+        { error: "Thiếu tham số bắt buộc" },
+        { status: 400 }
+      );
     }
 
-    const segments = [];
-    for (let i = fromIndex; i < toIndex; i++) {
-      segments.push({
-        from_station_id: allStops[i].station_id,
-        to_station_id: allStops[i + 1].station_id,
-      });
-    }
-
-    return segments;
+    const segments = await getStationSegments(
+      trainID,
+      fromStationID,
+      toStationID
+    );
+    return NextResponse.json(segments);
   } catch (error) {
-    console.error("Error fetching station segments:", error.message);
-    return [];
-  } finally {
-    await prisma.$disconnect();
+    console.error("Lỗi trong route_segments:", error.message);
+    return NextResponse.json({ error: "Lỗi máy chủ nội bộ" }, { status: 500 });
   }
-};
+}
