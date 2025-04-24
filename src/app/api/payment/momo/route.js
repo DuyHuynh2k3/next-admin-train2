@@ -1,14 +1,14 @@
-//src/app/api/payment/momo
 import axios from "axios";
 import crypto from "crypto";
+import { getFrontendUrl } from "../../../../utils/getFrontendUrl"; // Import hàm tiện ích
 
 const config = {
   accessKey: "F8BBA842ECF85",
   secretKey: "K951B6PE1waDMi640xX08PD3vg6EkVlz",
   orderInfo: "pay with MoMo",
   partnerCode: "MOMO",
-  redirectUrl: "http://localhost:3001/infoSeat",
-  ipnUrl: "https://0778-14-178-58-205.ngrok-free.app/api/callback",
+  redirectUrl: `${getFrontendUrl()}/infoSeat`, // Sử dụng URL động
+  ipnUrl: "https://0778-14-178-58-205.ngrok-free.app/api/callback", // Cần thay bằng URL callback thực tế khi deploy
   requestType: "payWithMethod",
   extraData: "",
   orderGroupId: "",
@@ -16,7 +16,6 @@ const config = {
   lang: "vi",
 };
 
-// Xử lý POST request
 export async function POST(req) {
   const {
     accessKey,
@@ -31,13 +30,12 @@ export async function POST(req) {
     lang,
   } = config;
 
-  // Parse request body
   const body = await req.json();
   const { amount, orderId, orderInfo: clientOrderInfo } = body;
 
   if (!amount || !orderId || !clientOrderInfo) {
     return new Response(
-      JSON.stringify({ message: "Missing required fields" }),
+      JSON.stringify({ message: "Thiếu các trường bắt buộc" }),
       { status: 400 }
     );
   }
@@ -83,16 +81,21 @@ export async function POST(req) {
     if (result.data && result.data.payUrl) {
       return new Response(JSON.stringify({ payUrl: result.data.payUrl }), {
         status: 200,
-      }); // Thêm dấu ngoặc đóng ở đây
+        headers: {
+          "Access-Control-Allow-Origin": "*", // Thêm CORS nếu cần
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        },
+      });
     } else {
-      console.error("MoMo API response error:", result.data);
+      console.error("Lỗi phản hồi API MoMo:", result.data);
       return new Response(
-        JSON.stringify({ message: "MoMo API response error" }),
+        JSON.stringify({ message: "Lỗi phản hồi API MoMo" }),
         { status: 500 }
       );
     }
   } catch (error) {
-    console.error("Error calling MoMo API:", error.message);
+    console.error("Lỗi khi gọi API MoMo:", error.message);
     return new Response(JSON.stringify({ message: error.message }), {
       status: 500,
     });

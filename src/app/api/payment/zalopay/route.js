@@ -1,8 +1,8 @@
-//src/app/api/payment/zalopay:
 import { NextResponse } from "next/server";
 import axios from "axios";
 import moment from "moment-timezone";
-import crypto from "crypto"; // Sử dụng module crypto của Node.js thay vì crypto-js
+import crypto from "crypto";
+import { getFrontendUrl } from "../../../../utils/getFrontendUrl"; // Import hàm tiện ích
 
 const config = {
   app_id: process.env.ZALOPAY_APP_ID,
@@ -15,7 +15,6 @@ export async function POST(request) {
   try {
     const { amount, orderId, orderInfo } = await request.json();
 
-    // Kiểm tra dữ liệu đầu vào
     if (!amount || isNaN(amount) || amount <= 0) {
       return NextResponse.json(
         { error: "Số tiền hợp lệ và lớn hơn 0 là bắt buộc" },
@@ -23,7 +22,6 @@ export async function POST(request) {
       );
     }
 
-    // Kiểm tra biến môi trường
     if (!config.app_id || !config.key1) {
       return NextResponse.json(
         { error: "Lỗi cấu hình server: Thiếu thông tin xác thực ZaloPay" },
@@ -32,7 +30,7 @@ export async function POST(request) {
     }
 
     const embed_data = {
-      redirecturl: "http://localhost:3001/infoseat",
+      redirecturl: `${getFrontendUrl()}/infoSeat`, // Sử dụng URL động
     };
     const items = [];
     const transID = orderId || Math.floor(Math.random() * 1000000);
@@ -47,22 +45,27 @@ export async function POST(request) {
       embed_data: JSON.stringify(embed_data),
       amount: parseInt(amount),
       callback_url:
-        "https://b074-1-53-37-194.ngrok-free.app/api/callback/zalopay",
+        "https://b074-1-53-37-194.ngrok-free.app/api/callback/zalopay", // Thay bằng URL callback thực tế khi deploy
       description: orderInfo || `Thanh toán cho đơn hàng #${transID}`,
       bank_code: "",
     };
 
-    // Tạo chuỗi dữ liệu cho HMAC
     const data = `${config.app_id}|${order.app_trans_id}|${order.app_user}|${order.amount}|${order.app_time}|${order.embed_data}|${order.item}`;
     order.mac = crypto
       .createHmac("sha256", config.key1)
       .update(data)
       .digest("hex");
 
-    // Gửi yêu cầu đến ZaloPay
     const result = await axios.post(config.endpoint, null, { params: order });
 
-    return NextResponse.json(result.data, { status: 200 });
+    return NextResponse.json(result.data, {
+      status: 200,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
   } catch (error) {
     console.error("Lỗi khi xử lý thanh toán ZaloPay:", error);
     return NextResponse.json(
