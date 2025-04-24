@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import axios from "axios";
 import moment from "moment-timezone";
 import crypto from "crypto";
-import { getFrontendUrl } from "../../../../utils/getFrontendUrl"; // Import hàm tiện ích
 
 const config = {
   app_id: process.env.ZALOPAY_APP_ID,
@@ -30,7 +29,7 @@ export async function POST(request) {
     }
 
     const embed_data = {
-      redirecturl: `${getFrontendUrl()}/infoSeat`, // Sử dụng URL động
+      redirecturl: `https://train-booking-henna.vercel.app/infoSeat`, // Sử dụng URL động
     };
     const items = [];
     const transID = orderId || Math.floor(Math.random() * 1000000);
