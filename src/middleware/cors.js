@@ -1,4 +1,4 @@
-// src/app/api/createOrder/route.js
+//src/middleware/cors.js
 import { NextResponse } from "next/server";
 import CryptoJS from "crypto-js";
 import axios from "axios";

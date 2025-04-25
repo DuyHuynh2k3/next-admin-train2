@@ -3,6 +3,7 @@ import axios from "axios";
 import moment from "moment-timezone";
 import crypto from "crypto";
 
+// Cấu hình ZaloPay
 const config = {
   app_id: process.env.ZALOPAY_APP_ID,
   key1: process.env.ZALOPAY_KEY1,
@@ -10,6 +11,14 @@ const config = {
   endpoint: "https://sb-openapi.zalopay.vn/v2/create",
 };
 
+// Định nghĩa tiêu đề CORS
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "https://train-booking-henna.vercel.app", // Giới hạn nguồn cụ thể
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+// Xử lý yêu cầu POST
 export async function POST(request) {
   try {
     const { amount, orderId, orderInfo } = await request.json();
@@ -17,19 +26,19 @@ export async function POST(request) {
     if (!amount || isNaN(amount) || amount <= 0) {
       return NextResponse.json(
         { error: "Số tiền hợp lệ và lớn hơn 0 là bắt buộc" },
-        { status: 400 }
+        { status: 400, headers: corsHeaders }
       );
     }
 
     if (!config.app_id || !config.key1) {
       return NextResponse.json(
         { error: "Lỗi cấu hình server: Thiếu thông tin xác thực ZaloPay" },
-        { status: 500 }
+        { status: 500, headers: corsHeaders }
       );
     }
 
     const embed_data = {
-      redirecturl: `train-booking-henna.vercel.app/infoSeat`, // Sử dụng URL động
+      redirecturl: `https://train-booking-henna.vercel.app/infoSeat`, // URL động
     };
     const items = [];
     const transID = orderId || Math.floor(Math.random() * 1000000);
@@ -59,17 +68,21 @@ export async function POST(request) {
 
     return NextResponse.json(result.data, {
       status: 200,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-      },
+      headers: corsHeaders,
     });
   } catch (error) {
     console.error("Lỗi khi xử lý thanh toán ZaloPay:", error);
     return NextResponse.json(
       { error: "Xử lý thanh toán thất bại", details: error.message },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
+}
+
+// Xử lý yêu cầu OPTIONS (preflight CORS)
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
 }
