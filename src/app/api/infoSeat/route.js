@@ -1,10 +1,17 @@
-//src/app/api/infoSeat/route.js:
+// src/app/api/infoSeat/route.js
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { format } from "date-fns";
 import QRService from "@/services/qrService";
 
 const prisma = new PrismaClient();
+
+// CORS headers
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "https://train-booking-henna.vercel.app", // Chỉ định domain frontend
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
 
 export async function GET(request) {
   try {
@@ -15,12 +22,12 @@ export async function GET(request) {
 
     // Validate inputs: At least one field must be provided
     if (!ticket_id && !email && !phoneNumber) {
-      return NextResponse.json(
-        {
+      return new NextResponse(
+        JSON.stringify({
           error:
             "Vui lòng cung cấp ít nhất một thông tin (mã vé, email hoặc số điện thoại)",
-        },
-        { status: 400 }
+        }),
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -30,9 +37,9 @@ export async function GET(request) {
     if (ticket_id) {
       const ticketId = parseInt(ticket_id);
       if (isNaN(ticketId)) {
-        return NextResponse.json(
-          { error: "Mã vé không hợp lệ" },
-          { status: 400 }
+        return new NextResponse(
+          JSON.stringify({ error: "Mã vé không hợp lệ" }),
+          { status: 400, headers: corsHeaders }
         );
       }
 
@@ -48,30 +55,30 @@ export async function GET(request) {
       });
 
       if (!ticket) {
-        return NextResponse.json(
-          {
+        return new NextResponse(
+          JSON.stringify({
             error: "Không tìm thấy vé với mã vé này.",
-          },
-          { status: 404 }
+          }),
+          { status: 404, headers: corsHeaders }
         );
       }
 
       // If email or phoneNumber is provided, validate them
       if (email && ticket.email?.toLowerCase() !== email.toLowerCase()) {
-        return NextResponse.json(
-          {
+        return new NextResponse(
+          JSON.stringify({
             error: "Email không khớp với vé này.",
-          },
-          { status: 400 }
+          }),
+          { status: 400, headers: corsHeaders }
         );
       }
 
       if (phoneNumber && ticket.phoneNumber !== phoneNumber) {
-        return NextResponse.json(
-          {
+        return new NextResponse(
+          JSON.stringify({
             error: "Số điện thoại không khớp với vé này.",
-          },
-          { status: 400 }
+          }),
+          { status: 400, headers: corsHeaders }
         );
       }
     } else {
@@ -97,12 +104,12 @@ export async function GET(request) {
       });
 
       if (!ticket) {
-        return NextResponse.json(
-          {
+        return new NextResponse(
+          JSON.stringify({
             error:
               "Không tìm thấy thông tin vé. Vui lòng kiểm tra lại email hoặc số điện thoại.",
-          },
-          { status: 404 }
+          }),
+          { status: 404, headers: corsHeaders }
         );
       }
     }
@@ -181,14 +188,25 @@ export async function GET(request) {
     };
     console.log("Formatted Ticket QR Code URL:", formattedTicket.qr_code_url);
 
-    return NextResponse.json(formattedTicket);
+    return new NextResponse(JSON.stringify(formattedTicket), {
+      status: 200,
+      headers: corsHeaders,
+    });
   } catch (error) {
     console.error("Error fetching ticket:", error);
-    return NextResponse.json(
-      { error: "Lỗi hệ thống", details: error.message },
-      { status: 500 }
+    return new NextResponse(
+      JSON.stringify({ error: "Lỗi hệ thống", details: error.message }),
+      { status: 500, headers: corsHeaders }
     );
   } finally {
     await prisma.$disconnect();
   }
+}
+
+// Handle CORS preflight requests
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
 }
