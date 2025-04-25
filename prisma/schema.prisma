@@ -104,12 +104,13 @@ model train {
 
 model train_recurrence {
   recurrence_id Int        @id @default(autoincrement())
-  trainID       Int // Thêm trường trainID
   start_date    DateTime   @db.Date
   end_date      DateTime   @db.Date
   days_of_week  String     @db.VarChar(7)
+  trainID       Int
   schedule      schedule[]
   train         train      @relation(fields: [trainID], references: [trainID])
+
   @@index([trainID])
 }
 
