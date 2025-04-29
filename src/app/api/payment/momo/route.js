@@ -8,7 +8,7 @@ const config = {
   secretKey: "K951B6PE1waDMi640xX08PD3vg6EkVlz",
   orderInfo: "pay with MoMo",
   partnerCode: "MOMO",
-  redirectUrl: `http://front.goticket.click:3000/infoSeat`, // URL động
+  redirectUrl: `http://front.goticket.click/infoSeat`, // URL động
   ipnUrl: "https://0778-14-178-58-205.ngrok-free.app/api/callback", // Cần thay bằng URL callback thực tế khi deploy
   requestType: "payWithMethod",
   extraData: "",
@@ -19,7 +19,7 @@ const config = {
 
 // Định nghĩa tiêu đề CORS
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "http://front.goticket.click:3000", // Giới hạn nguồn cụ thể
+  "Access-Control-Allow-Origin": "http://front.goticket.click", // Giới hạn nguồn cụ thể
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
