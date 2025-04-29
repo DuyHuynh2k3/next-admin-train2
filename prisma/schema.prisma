@@ -32,7 +32,6 @@ model schedule {
   @@index([departTime], map: "idx_departure")
   @@index([recurrence_id], map: "recurrence_id")
   @@index([trainID, departTime], map: "idx_schedule_train_date")
-  @@index([trainID], map: "idx_schedule_trainID")
 }
 
 model booking {
@@ -88,7 +87,6 @@ model ticket {
   @@index([to_station_id], map: "to_station_id")
   @@index([trainID], map: "trainID")
   @@index([booking_id], map: "fk_booking")
-  @@index([trainID], map: "idx_ticket_trainID")
 }
 
 model train {
@@ -113,7 +111,7 @@ model train_recurrence {
   schedule      schedule[]
   train         train      @relation(fields: [trainID], references: [trainID])
 
-  @@index([trainID], map: "idx_train_recurrence_trainID")
+  @@index([trainID], map: "fk_train_recurrence_train")
 }
 
 model payment_ticket {
@@ -168,7 +166,6 @@ model route_segment {
 
   @@unique([from_station_id, to_station_id], map: "from_station_id")
   @@index([to_station_id], map: "to_station_id")
-  @@index([from_station_id, to_station_id], map: "idx_route_segment_from_to")
 }
 
 model train_stop {
@@ -187,7 +184,6 @@ model train_stop {
   @@index([station_id], map: "station_id")
   @@index([arrival_time], map: "idx_arrival")
   @@index([departure_time], map: "idx_departure")
-  @@index([trainID], map: "idx_train_stop_trainID")
 }
 
 model seat_template {
@@ -200,7 +196,6 @@ model seat_template {
   train       train                   @relation(fields: [trainID], references: [trainID], onUpdate: Restrict, map: "seat_template_ibfk_1")
 
   @@unique([trainID, coach, seat_number], map: "unique_template_seat")
-  @@index([trainID], map: "idx_seat_template_trainID")
 }
 
 model seattrain {
@@ -217,8 +212,6 @@ model seattrain {
 
   @@unique([trainID, travel_date, coach, seat_number], map: "trainID")
   @@index([trainID, travel_date, is_available], map: "idx_seatrain_date")
-  @@index([trainID], map: "idx_seattrain_trainID")
-  @@index([trainID, travel_date], map: "idx_seattrain_trainid_traveldate")
 }
 
 model seat_availability_segment {
@@ -237,9 +230,8 @@ model seat_availability_segment {
   @@unique([seatID, trainID, travel_date, from_station_id, to_station_id], map: "unique_seat_segment")
   @@index([from_station_id], map: "from_station_id")
   @@index([to_station_id], map: "to_station_id")
+  @@index([trainID], map: "trainID")
   @@index([seatID, trainID, travel_date, is_available], map: "idx_seat_availability_segment")
-  @@index([seatID, trainID, travel_date], map: "idx_seat_availability_segment_seatid_trainid")
-  @@index([trainID], map: "idx_seat_availability_segment_trainID")
 }
 
 model blog {
@@ -249,13 +241,17 @@ model blog {
   createdAt  DateTime @default(now()) @db.DateTime(0)
   imageUrls  String?  @db.LongText
   categoryId Int
+  sections   String?  @db.Text
+  category   category @relation(fields: [categoryId], references: [id])
 
   @@index([categoryId], map: "idx_categoryId")
 }
 
 model category {
-  id   Int    @id @default(autoincrement())
-  name String @unique(map: "name") @db.VarChar(255)
+  id    Int     @id @default(autoincrement())
+  name  String  @unique(map: "name") @db.VarChar(255)
+  slug  String? @unique(map: "slug") @db.VarChar(255)
+  blogs blog[]
 }
 
 enum ticket_payment_status {
