@@ -227,9 +227,7 @@ export async function POST(request) {
     }
 
     // Validate end_date is not before start_date
-    const startDate = new Date(body.start_date);
-    const endDate = new Date(body.end_date);
-    if (endDate < startDate) {
+    if (new Date(body.end_date) < new Date(body.start_date)) {
       return NextResponse.json(
         { error: "End date cannot be before start date" },
         { status: 400 }
@@ -321,25 +319,6 @@ export async function POST(request) {
         { error: "Some station IDs do not exist", missingStationIds },
         { status: 400 }
       );
-    }
-
-    // Chia nhỏ khoảng thời gian nếu quá lớn
-    const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-    const maxDaysPerBatch = 30; // Xử lý tối đa 30 ngày một lần
-    const batches = [];
-    let currentStartDate = new Date(startDate);
-
-    while (currentStartDate <= endDate) {
-      const batchEndDate = new Date(currentStartDate);
-      batchEndDate.setDate(batchEndDate.getDate() + maxDaysPerBatch - 1);
-      if (batchEndDate > endDate) {
-        batchEndDate.setTime(endDate.getTime());
-      }
-      batches.push({
-        start: currentStartDate.toISOString().split("T")[0],
-        end: batchEndDate.toISOString().split("T")[0],
-      });
-      currentStartDate.setDate(currentStartDate.getDate() + maxDaysPerBatch);
     }
 
     const result = await prisma.$transaction(async (prisma) => {
@@ -455,38 +434,19 @@ export async function POST(request) {
       return { train, recurrence };
     });
 
-    // 6. Call stored procedure to generate seats in batches
-    const connection = await mysql.createConnection({
-      uri: process.env.DATABASE_URL,
-      connectTimeout: 10000, // 10 giây
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
-    });
-
+    // 6. Call stored procedure to generate seats
+    const connection = await mysql.createConnection(process.env.DATABASE_URL);
     try {
-      // Đặt session collation để tránh lỗi collation
       await connection.execute(
-        "SET SESSION collation_connection = 'utf8mb4_general_ci'"
+        `CALL GenerateSeatsForSchedulePeriod(?, ?, ?, ?, ?)`,
+        [
+          parseInt(body.trainID),
+          body.start_date,
+          body.end_date,
+          body.departTime,
+          body.arrivalTime,
+        ]
       );
-
-      // Gọi stored procedure theo từng batch
-      for (const batch of batches) {
-        console.log(
-          `Processing batch: ${batch.start} to ${batch.end} for trainID ${body.trainID}`
-        );
-        await connection.execute(
-          `CALL GenerateSeatsForSchedulePeriod(?, ?, ?, ?, ?)`,
-          [
-            parseInt(body.trainID),
-            batch.start,
-            batch.end,
-            body.departTime,
-            body.arrivalTime,
-          ],
-          { timeout: 60000 } // Timeout 60 giây cho mỗi batch
-        );
-      }
     } catch (error) {
       throw new Error(`Stored procedure failed: ${error.message}`);
     } finally {
