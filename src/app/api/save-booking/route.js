@@ -94,7 +94,7 @@ async function sendBookingEmail(tickets, booking, email) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "api-key": process.env.BREVO_API_KEY,
+        "api-key": process.env.EMAIL_API_KEY,
       },
       body: JSON.stringify({
         sender: {

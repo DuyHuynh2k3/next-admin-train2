@@ -11,8 +11,8 @@ const corsHeaders = {
 export async function POST(request) {
   try {
     console.log(
-      "BREVO_API_KEY:",
-      process.env.BREVO_API_KEY ? "Có API key" : "Không có API key"
+      "EMAIL_API_KEY:",
+      process.env.EMAIL_API_KEY ? "Có API key" : "Không có API key"
     );
 
     const { email } = await request.json();
@@ -147,7 +147,7 @@ export async function POST(request) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "api-key": process.env.BREVO_API_KEY,
+        "api-key": process.env.EMAIL_API_KEY,
       },
       body: JSON.stringify({
         sender: {
