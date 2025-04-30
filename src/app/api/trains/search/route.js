@@ -136,7 +136,10 @@ export async function GET(req) {
     { status: 200 }
   );
 
-  response.headers.set("Access-Control-Allow-Origin", "*");
+  response.headers.set(
+    "Access-Control-Allow-Origin",
+    "http://www.goticket.click"
+  );
   response.headers.set(
     "Access-Control-Allow-Methods",
     "GET, POST, PUT, DELETE, OPTIONS"
