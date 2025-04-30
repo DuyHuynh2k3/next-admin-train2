@@ -78,11 +78,12 @@ export function DataTableTicket() {
     React.useState<Ticket | null>(null);
   const [selectedTicketUpdate, setSelectedTicketUpdate] =
     React.useState<Ticket | null>(null);
+  const [pageIndex, setPageIndex] = React.useState(1); // bắt đầu từ trang 1
 
   React.useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch(`/api/ticket?limit=${limit}`);
+        const res = await fetch(`/api/ticket?page=${pageIndex}&limit=${limit}`);
         if (!res.ok) {
           console.error("Failed to fetch tickets. Status:", res.status);
           throw new Error("Failed to fetch tickets");
@@ -102,7 +103,7 @@ export function DataTableTicket() {
     };
 
     fetchData();
-  }, [limit]);
+  }, [limit, pageIndex]);
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -444,16 +445,15 @@ export function DataTableTicket() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
+              onClick={() => setPageIndex((prev) => Math.max(prev - 1, 1))}
+              disabled={pageIndex === 1}
             >
               Trước
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
+              onClick={() => setPageIndex((prev) => prev + 1)}
             >
               Sau
             </Button>
