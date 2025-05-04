@@ -104,13 +104,14 @@ model train {
 
 model train_recurrence {
   recurrence_id Int        @id @default(autoincrement())
-  trainID       Int // Thêm trường trainID
   start_date    DateTime   @db.Date
   end_date      DateTime   @db.Date
   days_of_week  String     @db.VarChar(7)
+  trainID       Int
   schedule      schedule[]
   train         train      @relation(fields: [trainID], references: [trainID])
-  @@index([trainID])
+
+  @@index([trainID], map: "fk_train_recurrence_train")
 }
 
 model payment_ticket {
@@ -230,6 +231,7 @@ model seat_availability_segment {
   @@index([from_station_id], map: "from_station_id")
   @@index([to_station_id], map: "to_station_id")
   @@index([trainID], map: "trainID")
+  @@index([seatID, trainID, travel_date, is_available], map: "idx_seat_availability_segment")
 }
 
 model blog {
@@ -239,13 +241,17 @@ model blog {
   createdAt  DateTime @default(now()) @db.DateTime(0)
   imageUrls  String?  @db.LongText
   categoryId Int
+  sections   String?  @db.Text
+  category   category @relation(fields: [categoryId], references: [id])
 
   @@index([categoryId], map: "idx_categoryId")
 }
 
 model category {
-  id   Int    @id @default(autoincrement())
-  name String @unique(map: "name") @db.VarChar(255)
+  id    Int     @id @default(autoincrement())
+  name  String  @unique(map: "name") @db.VarChar(255)
+  slug  String? @unique(map: "slug") @db.VarChar(255)
+  blogs blog[]
 }
 
 enum ticket_payment_status {

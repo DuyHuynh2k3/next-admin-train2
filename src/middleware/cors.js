@@ -1,4 +1,4 @@
-// src/app/api/createOrder/route.js
+//src/middleware/cors.js
 import { NextResponse } from "next/server";
 import CryptoJS from "crypto-js";
 import axios from "axios";
@@ -38,7 +38,7 @@ export async function POST(request) {
     const response = await axios.post(config.endpoint, null, { params: order });
     return NextResponse.json(response.data, {
       headers: {
-        "Access-Control-Allow-Origin": "https://train-booking-kohl.vercel.app",
+        "Access-Control-Allow-Origin": "http://localhost:3001",
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type,Authorization",
         "Access-Control-Allow-Methods": "POST, OPTIONS",

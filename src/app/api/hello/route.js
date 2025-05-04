@@ -7,7 +7,7 @@ export async function GET() {
 
   // Thêm CORS headers
   const headers = {
-    "Access-Control-Allow-Origin": "*", // Cho phép tất cả các domain truy cập
+    "Access-Control-Allow-Origin": "http://localhost:3001", // Cho phép tất cả các domain truy cập
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE", // Cho phép các phương thức
     "Access-Control-Allow-Headers": "Content-Type", // Cho phép các headers
   };

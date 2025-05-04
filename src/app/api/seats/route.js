@@ -1,10 +1,17 @@
+// src/app/api/seats/route.js
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import { getStationSegments } from "../../../lib/seatUtils"; // Cập nhật đường dẫn import
+import { getStationSegments } from "@/lib/stationSegments";
 
 const prisma = new PrismaClient();
 
-// Hàm tính hệ số nhân dựa trên seat_type
+// CORS headers
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "http://localhost:3001",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
 const getSeatTypeMultiplier = (seatType) => {
   switch (seatType) {
     case "soft":
@@ -26,13 +33,17 @@ export async function GET(request) {
     const fromStationID = parseInt(searchParams.get("from_station_id"));
     const toStationID = parseInt(searchParams.get("to_station_id"));
 
-    console.log("trainID:", trainID);
-    console.log("travelDate:", travelDate);
+    console.log("Request Params:", {
+      trainID,
+      travelDate,
+      fromStationID,
+      toStationID,
+    });
 
     if (!trainID || !travelDate || !fromStationID || !toStationID) {
-      return NextResponse.json(
-        { error: "Missing required parameters" },
-        { status: 400 }
+      return new NextResponse(
+        JSON.stringify({ error: "Missing required parameters" }),
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -50,9 +61,11 @@ export async function GET(request) {
     console.log("Seats Before Availability for trainID", trainID, ":", seats);
 
     if (seats.length === 0) {
-      return NextResponse.json(
-        { error: "No seats found for this train on the specified date" },
-        { status: 404 }
+      return new NextResponse(
+        JSON.stringify({
+          error: "No seats found for this train on the specified date",
+        }),
+        { status: 404, headers: corsHeaders }
       );
     }
 
@@ -69,9 +82,11 @@ export async function GET(request) {
     }));
 
     if (segmentsToSum.length === 0) {
-      return NextResponse.json(
-        { error: "No route segments found between the stations" },
-        { status: 400 }
+      return new NextResponse(
+        JSON.stringify({
+          error: "No route segments found between the stations",
+        }),
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -117,14 +132,14 @@ export async function GET(request) {
 
     const availableSeats = seatsWithAvailability.filter((seat) => {
       const availabilitySegments = seat.seat_availability_segment;
-      return segmentsToSum.every((segment) =>
-        availabilitySegments.some(
+      return segmentsToSum.every((segment) => {
+        const match = availabilitySegments.find(
           (avail) =>
             avail.from_station_id === segment.from &&
-            avail.to_station_id === segment.to &&
-            avail.is_available
-        )
-      );
+            avail.to_station_id === segment.to
+        );
+        return match && match.is_available === true;
+      });
     });
 
     console.log(
@@ -145,11 +160,11 @@ export async function GET(request) {
       });
 
       if (!routeSegment) {
-        return NextResponse.json(
-          {
+        return new NextResponse(
+          JSON.stringify({
             error: `No route segment found between stations ${segment.from} and ${segment.to}`,
-          },
-          { status: 400 }
+          }),
+          { status: 400, headers: corsHeaders }
         );
       }
 
@@ -160,7 +175,7 @@ export async function GET(request) {
 
     // Nhóm ghế theo seat_type và coach
     const seatMap = {};
-    availableSeats.forEach((seat) => {
+    seats.forEach((seat) => {
       const seat_type = seat.seat_type;
       const coach = seat.coach;
 
@@ -170,9 +185,14 @@ export async function GET(request) {
       if (!seatMap[seat_type][coach]) {
         seatMap[seat_type][coach] = [];
       }
+
+      const isAvailable = availableSeats.some(
+        (availableSeat) => availableSeat.seatID === seat.seatID
+      );
+
       seatMap[seat_type][coach].push({
         seat_number: seat.seat_number,
-        is_available: true,
+        is_available: isAvailable,
       });
     });
 
@@ -181,7 +201,8 @@ export async function GET(request) {
       const coaches = seatMap[seat_type] || {};
       const coachKeys = Object.keys(coaches);
       const totalAvailable = coachKeys.reduce(
-        (sum, coach) => sum + (coaches[coach]?.length || 0),
+        (sum, coach) =>
+          sum + coaches[coach].filter((s) => s.is_available === true).length,
         0
       );
 
@@ -201,14 +222,31 @@ export async function GET(request) {
 
     console.log("Formatted Result for trainID", trainID, ":", formattedResult);
 
-    return NextResponse.json(formattedResult);
+    return new NextResponse(JSON.stringify(formattedResult), {
+      status: 200,
+      headers: corsHeaders,
+    });
   } catch (error) {
-    console.error("Error fetching seats:", error.message);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+    console.error("Error fetching seats:", {
+      message: error.message,
+      stack: error.stack,
+    });
+    return new NextResponse(
+      JSON.stringify({
+        error: "Internal server error",
+        details: error.message,
+      }),
+      { status: 500, headers: corsHeaders }
     );
   } finally {
     await prisma.$disconnect();
   }
+}
+
+// Handle CORS preflight requests
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
 }

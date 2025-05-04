@@ -1,10 +1,18 @@
 import prisma from "@/lib/prisma";
+import { NextResponse } from "next/server"; // Đảm bảo sử dụng NextResponse
+
+// Định nghĩa tiêu đề CORS
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "http://localhost:3001",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
 
 export async function POST(request) {
   try {
     console.log(
-      "BREVO_API_KEY:",
-      process.env.BREVO_API_KEY ? "Có API key" : "Không có API key"
+      "EMAIL_API_KEY:",
+      process.env.EMAIL_API_KEY ? "Có API key" : "Không có API key"
     );
 
     const { email } = await request.json();
@@ -12,18 +20,18 @@ export async function POST(request) {
 
     if (!email) {
       console.error("Lỗi: Email không được cung cấp");
-      return new Response(JSON.stringify({ error: "Email là bắt buộc" }), {
+      return new NextResponse(JSON.stringify({ error: "Email là bắt buộc" }), {
         status: 400,
-        headers: { "Content-Type": "application/json" },
+        headers: corsHeaders,
       });
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       console.error("Lỗi: Email không hợp lệ:", email);
-      return new Response(JSON.stringify({ error: "Email không hợp lệ" }), {
+      return new NextResponse(JSON.stringify({ error: "Email không hợp lệ" }), {
         status: 400,
-        headers: { "Content-Type": "application/json" },
+        headers: corsHeaders,
       });
     }
 
@@ -66,9 +74,9 @@ export async function POST(request) {
 
     if (!bookings.length || !bookings[0].tickets.length) {
       console.error("Lỗi: Không tìm thấy vé nào với email:", email);
-      return new Response(
+      return new NextResponse(
         JSON.stringify({ error: "Không tìm thấy vé nào với email này" }),
-        { status: 404, headers: { "Content-Type": "application/json" } }
+        { status: 404, headers: corsHeaders }
       );
     }
 
@@ -139,7 +147,7 @@ export async function POST(request) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "api-key": process.env.BREVO_API_KEY,
+        "api-key": process.env.EMAIL_API_KEY,
       },
       body: JSON.stringify({
         sender: {
@@ -161,21 +169,29 @@ export async function POST(request) {
     }
 
     console.log("Email gửi thành công:", responseData);
-    return new Response(
+    return new NextResponse(
       JSON.stringify({
         message: "Danh sách mã đặt chỗ đã được gửi đến email của bạn!",
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      { status: 200, headers: corsHeaders }
     );
   } catch (error) {
     console.error("Lỗi khi gửi email:", error.message, error.stack);
-    return new Response(
+    return new NextResponse(
       JSON.stringify({
         error: error.message || "Gửi email thất bại, vui lòng thử lại",
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: corsHeaders }
     );
   } finally {
     await prisma.$disconnect();
   }
+}
+
+// Xử lý yêu cầu OPTIONS (preflight CORS)
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
 }

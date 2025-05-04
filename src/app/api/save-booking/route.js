@@ -1,3 +1,4 @@
+// src/app/api/save-booking/route.js
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
@@ -9,6 +10,13 @@ const passengerTypeEnum = {
 };
 
 const prisma = new PrismaClient();
+
+// CORS headers
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "http://localhost:3001",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
 
 const parseUTCTime = (dateStr, timeStr) => {
   const [hours, minutes] = timeStr.split(":");
@@ -86,7 +94,7 @@ async function sendBookingEmail(tickets, booking, email) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "api-key": process.env.BREVO_API_KEY,
+        "api-key": process.env.EMAIL_API_KEY,
       },
       body: JSON.stringify({
         sender: {
@@ -129,9 +137,12 @@ export async function POST(request) {
     });
 
     if (!customerData?.passport || !ticketDataList?.length) {
-      return NextResponse.json(
-        { success: false, error: "Thông tin người đặt và vé là bắt buộc" },
-        { status: 400 }
+      return new NextResponse(
+        JSON.stringify({
+          success: false,
+          error: "Thông tin người đặt và vé là bắt buộc",
+        }),
+        { status: 400, headers: corsHeaders }
       );
     }
 
@@ -297,28 +308,39 @@ export async function POST(request) {
       };
     });
 
-    return NextResponse.json({
-      success: true,
-      booking_id: transaction.booking.booking_id,
-      ticket_ids: transaction.tickets.map((t) => t.ticket_id),
-      email: customerData.email,
-    });
+    return new NextResponse(
+      JSON.stringify({
+        success: true,
+        booking_id: transaction.booking.booking_id,
+        ticket_ids: transaction.tickets.map((t) => t.ticket_id),
+        email: customerData.email,
+      }),
+      { status: 200, headers: corsHeaders }
+    );
   } catch (error) {
     console.error("Error saving booking:", {
       message: error.message,
       stack: error.stack,
       raw: error,
     });
-    return NextResponse.json(
-      {
+    return new NextResponse(
+      JSON.stringify({
         success: false,
         error: "Lỗi hệ thống",
         details:
           process.env.NODE_ENV === "development" ? error.message : undefined,
-      },
-      { status: 500 }
+      }),
+      { status: 500, headers: corsHeaders }
     );
   } finally {
-    if (!transaction) await prisma.$disconnect();
+    await prisma.$disconnect();
   }
+}
+
+// Xử lý yêu cầu OPTIONS (preflight CORS)
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
 }

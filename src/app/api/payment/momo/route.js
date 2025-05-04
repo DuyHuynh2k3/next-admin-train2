@@ -1,14 +1,15 @@
-//src/app/api/payment/momo
+import { NextResponse } from "next/server"; // Sử dụng NextResponse thay vì Response
 import axios from "axios";
 import crypto from "crypto";
 
+// Cấu hình MoMo
 const config = {
   accessKey: "F8BBA842ECF85",
   secretKey: "K951B6PE1waDMi640xX08PD3vg6EkVlz",
   orderInfo: "pay with MoMo",
   partnerCode: "MOMO",
-  redirectUrl: "https://train-booking-eta.vercel.app/infoSeat",
-  ipnUrl: "https://0778-14-178-58-205.ngrok-free.app/api/callback",
+  redirectUrl: `http://localhost:3001/infoSeat`, // URL động
+  ipnUrl: "https://0778-14-178-58-205.ngrok-free.app/api/callback", // Cần thay bằng URL callback thực tế khi deploy
   requestType: "payWithMethod",
   extraData: "",
   orderGroupId: "",
@@ -16,7 +17,14 @@ const config = {
   lang: "vi",
 };
 
-// Xử lý POST request
+// Định nghĩa tiêu đề CORS
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "http://localhost:3001", // Giới hạn nguồn cụ thể
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+// Xử lý yêu cầu POST
 export async function POST(req) {
   const {
     accessKey,
@@ -31,14 +39,13 @@ export async function POST(req) {
     lang,
   } = config;
 
-  // Parse request body
   const body = await req.json();
   const { amount, orderId, orderInfo: clientOrderInfo } = body;
 
   if (!amount || !orderId || !clientOrderInfo) {
-    return new Response(
-      JSON.stringify({ message: "Missing required fields" }),
-      { status: 400 }
+    return NextResponse.json(
+      { message: "Thiếu các trường bắt buộc" },
+      { status: 400, headers: corsHeaders }
     );
   }
 
@@ -81,20 +88,30 @@ export async function POST(req) {
     );
 
     if (result.data && result.data.payUrl) {
-      return new Response(JSON.stringify({ payUrl: result.data.payUrl }), {
-        status: 200,
-      }); // Thêm dấu ngoặc đóng ở đây
+      return NextResponse.json(
+        { payUrl: result.data.payUrl },
+        { status: 200, headers: corsHeaders }
+      );
     } else {
-      console.error("MoMo API response error:", result.data);
-      return new Response(
-        JSON.stringify({ message: "MoMo API response error" }),
-        { status: 500 }
+      console.error("Lỗi phản hồi API MoMo:", result.data);
+      return NextResponse.json(
+        { message: "Lỗi phản hồi API MoMo" },
+        { status: 500, headers: corsHeaders }
       );
     }
   } catch (error) {
-    console.error("Error calling MoMo API:", error.message);
-    return new Response(JSON.stringify({ message: error.message }), {
-      status: 500,
-    });
+    console.error("Lỗi khi gọi API MoMo:", error.message);
+    return NextResponse.json(
+      { message: error.message },
+      { status: 500, headers: corsHeaders }
+    );
   }
+}
+
+// Xử lý yêu cầu OPTIONS (preflight CORS)
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
 }

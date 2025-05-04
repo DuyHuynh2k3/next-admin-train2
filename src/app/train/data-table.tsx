@@ -258,7 +258,7 @@ export function DataTableTrain() {
   };
 
   const handleAddTrain = async () => {
-    const requiredFields = [
+    const requiredFields: (keyof Train)[] = [
       "trainID",
       "train_name",
       "total_seats",
@@ -289,19 +289,53 @@ export function DataTableTrain() {
       return;
     }
 
+    // Kiểm tra định dạng thời gian
+    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+    if (
+      !timeRegex.test(newTrain.departTime!) || // Sử dụng ! vì đã kiểm tra trong requiredFields
+      !timeRegex.test(newTrain.arrivalTime!) // Sử dụng ! vì đã kiểm tra trong requiredFields
+    ) {
+      toast.error("Thời gian phải ở định dạng HH:MM!");
+      return;
+    }
+
+    // Kiểm tra định dạng ngày
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (
+      !dateRegex.test(newTrain.start_date!) || // Sử dụng ! vì đã kiểm tra trong requiredFields
+      !dateRegex.test(newTrain.end_date!) // Sử dụng ! vì đã kiểm tra trong requiredFields
+    ) {
+      toast.error("Ngày phải ở định dạng YYYY-MM-DD!");
+      return;
+    }
+
+    // Kiểm tra end_date không trước start_date
+    if (new Date(newTrain.end_date!) < new Date(newTrain.start_date!)) {
+      // Sử dụng ! vì đã kiểm tra trong requiredFields
+      toast.error("Ngày kết thúc không thể trước ngày bắt đầu!");
+      return;
+    }
+
+    // Kiểm tra days_of_week
+    if (!/^[01]{7}$/.test(newTrain.days_of_week!)) {
+      // Sử dụng ! vì đã kiểm tra trong requiredFields
+      toast.error("days_of_week phải là chuỗi 7 ký tự 0 hoặc 1!");
+      return;
+    }
+
     try {
       const response = await fetch("/api/trains", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          trainID: parseInt(newTrain.trainID?.toString() || "0"),
-          train_name: newTrain.train_name,
-          total_seats: parseInt(newTrain.total_seats?.toString() || "0"),
-          departTime: newTrain.departTime,
-          arrivalTime: newTrain.arrivalTime,
-          start_date: newTrain.start_date,
-          end_date: newTrain.end_date,
-          days_of_week: newTrain.days_of_week,
+          trainID: parseInt(newTrain.trainID!.toString()), // Sử dụng ! và chuyển thành string
+          train_name: newTrain.train_name!,
+          total_seats: parseInt(newTrain.total_seats!.toString()), // Sử dụng ! và chuyển thành string
+          departTime: newTrain.departTime!,
+          arrivalTime: newTrain.arrivalTime!,
+          start_date: newTrain.start_date!,
+          end_date: newTrain.end_date!,
+          days_of_week: newTrain.days_of_week!,
           stops: newTrain.stops,
           segments: newTrain.segments,
         }),
@@ -310,7 +344,7 @@ export function DataTableTrain() {
       const data = await response.json();
 
       if (response.ok) {
-        setTrainData((prevRecords) => [...prevRecords, data]);
+        setTrainData((prevRecords) => [...prevRecords, data as Train]);
         toast.success("Chuyến tàu đã được thêm thành công!");
         setShowModalAdd(false);
         setNewTrain({ stops: [], segments: [] });
