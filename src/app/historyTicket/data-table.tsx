@@ -79,6 +79,7 @@ export function DataTableTicket() {
   const [selectedTicketUpdate, setSelectedTicketUpdate] =
     React.useState<Ticket | null>(null);
   const [pageIndex, setPageIndex] = React.useState(1); // bắt đầu từ trang 1
+  const [isLastPage, setIsLastPage] = React.useState(false); // Trạng thái kiểm tra trang cuối
 
   React.useEffect(() => {
     const fetchData = async () => {
@@ -90,6 +91,8 @@ export function DataTableTicket() {
         }
         const data = await res.json();
         setTicketData(data);
+        // Kiểm tra nếu số lượng vé nhỏ hơn limit, thì đây là trang cuối
+        setIsLastPage(data.length < limit);
       } catch (error) {
         console.error("Error fetching data:", error);
         setError(
@@ -136,38 +139,6 @@ export function DataTableTicket() {
     });
   }, [ticketData, debouncedSearchText]);
 
-  // const handleDelete = async (ticket_id: number) => {
-  //   const confirmDelete = window.confirm("Bạn có chắc muốn xóa vé này?");
-  //   if (confirmDelete) {
-  //     try {
-  //       const response = await fetch(`/api/ticket?ticket_id=${ticket_id}`, {
-  //         method: "DELETE",
-  //       });
-
-  //       if (!response.ok) {
-  //         const errorData = await response.json();
-  //         throw new Error(errorData.error || "Xóa vé thất bại");
-  //       }
-
-  //       // Refresh the ticket list
-  //       const res = await fetch(`/api/ticket?limit=${limit}`);
-  //       if (!res.ok) {
-  //         throw new Error("Không thể tải lại danh sách vé");
-  //       }
-  //       const updatedData = await res.json();
-  //       setTicketData(updatedData);
-
-  //       setError(null);
-  //       alert("Xóa vé thành công!");
-  //     } catch (error) {
-  //       console.error("Lỗi khi xóa vé:", error);
-  //       setError(
-  //         error instanceof Error ? error.message : "Có lỗi xảy ra khi xóa vé"
-  //       );
-  //     }
-  //   }
-  // };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     if (showModalUpdate && selectedTicketUpdate) {
@@ -200,7 +171,6 @@ export function DataTableTicket() {
       const formattedTicket = {
         ...selectedTicket,
         travel_date: formatDate(selectedTicket.travel_date),
-        // Giữ price là number, không định dạng ở đây
       };
       setSelectedTicketView(formattedTicket);
       setShowModalView(true);
@@ -454,6 +424,7 @@ export function DataTableTicket() {
               variant="outline"
               size="sm"
               onClick={() => setPageIndex((prev) => prev + 1)}
+              disabled={isLastPage} // Vô hiệu hóa nút "Sau" khi là trang cuối
             >
               Sau
             </Button>
