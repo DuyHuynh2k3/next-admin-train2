@@ -14,7 +14,6 @@ const config = {
 // Định nghĩa tiêu đề CORS
 const corsHeaders = {
   "Access-Control-Allow-Origin": "http://www.goticket.click", // Giới hạn nguồn cụ thể
-  "Access-Control-Allow-Origin": "http://localhost:3001", // Giới hạn nguồn cụ thể
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
