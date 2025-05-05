@@ -3,11 +3,7 @@ import { NextResponse } from "next/server"; // Đảm bảo sử dụng NextResp
 
 // Định nghĩa tiêu đề CORS
 const corsHeaders = {
-<<<<<<< HEAD
   "Access-Control-Allow-Origin": "http://www.goticket.click",
-=======
-  "Access-Control-Allow-Origin": "http://localhost:3001",
->>>>>>> be4eaea1244fb26753f2d14d11ce3116fb1b6fd3
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
