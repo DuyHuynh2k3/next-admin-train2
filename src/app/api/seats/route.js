@@ -1,4 +1,3 @@
-// src/app/api/seats/route.js
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getStationSegments } from "@/lib/stationSegments";
@@ -51,10 +50,18 @@ export async function GET(request) {
     dateStart.setUTCHours(0, 0, 0, 0);
     console.log("Converted Date:", dateStart);
 
+    // Lấy ghế với các cột cần thiết
     const seats = await prisma.seattrain.findMany({
       where: {
         trainID: trainID,
         travel_date: dateStart,
+      },
+      select: {
+        seatID: true,
+        seat_type: true,
+        coach: true,
+        seat_number: true,
+        is_available: true,
       },
     });
 
@@ -71,6 +78,7 @@ export async function GET(request) {
 
     const seatIDs = seats.map((seat) => seat.seatID);
 
+    // Lấy đoạn tuyến
     const segments = await getStationSegments(
       trainID,
       fromStationID,
@@ -90,31 +98,39 @@ export async function GET(request) {
       );
     }
 
-    const availabilitySegments = [];
-    for (const segment of segmentsToSum) {
-      const segmentAvailability =
-        await prisma.seat_availability_segment.findMany({
-          where: {
-            seatID: { in: seatIDs },
-            trainID: trainID,
-            travel_date: dateStart,
-            from_station_id: segment.from,
-            to_station_id: segment.to,
-            is_available: true,
-          },
-        });
-      availabilitySegments.push(...segmentAvailability);
-    }
+    // Gộp truy vấn seat_availability_segment
+    const segmentConditions = segmentsToSum.map((segment) => ({
+      from_station_id: segment.from,
+      to_station_id: segment.to,
+    }));
+
+    const segmentAvailability = await prisma.seat_availability_segment.findMany(
+      {
+        where: {
+          seatID: { in: seatIDs },
+          trainID: trainID,
+          travel_date: dateStart,
+          is_available: true,
+          OR: segmentConditions,
+        },
+        select: {
+          seatID: true,
+          from_station_id: true,
+          to_station_id: true,
+          is_available: true,
+        },
+      }
+    );
 
     console.log(
       "Availability Segments for trainID",
       trainID,
       ":",
-      availabilitySegments
+      segmentAvailability
     );
 
     const seatsWithAvailability = seats.map((seat) => {
-      const seatAvailability = availabilitySegments.filter(
+      const seatAvailability = segmentAvailability.filter(
         (avail) => avail.seatID === seat.seatID
       );
       return {
@@ -157,6 +173,9 @@ export async function GET(request) {
           from_station_id: segment.from,
           to_station_id: segment.to,
         },
+        select: {
+          base_price: true,
+        },
       });
 
       if (!routeSegment) {
@@ -196,29 +215,32 @@ export async function GET(request) {
       });
     });
 
-    // Tính giá vé cho từng seat_type
-    const formattedResult = Object.keys(seatMap).map((seat_type) => {
-      const coaches = seatMap[seat_type] || {};
-      const coachKeys = Object.keys(coaches);
-      const totalAvailable = coachKeys.reduce(
-        (sum, coach) =>
-          sum + coaches[coach].filter((s) => s.is_available === true).length,
-        0
-      );
+    // Tính giá vé và định dạng kết quả
+    const formattedResult = Object.keys(seatMap)
+      .map((seat_type) => {
+        const coaches = seatMap[seat_type] || {};
+        const coachKeys = Object.keys(coaches);
+        if (coachKeys.length === 0) return null;
+        const totalAvailable = coachKeys.reduce(
+          (sum, coach) =>
+            sum + coaches[coach].filter((s) => s.is_available === true).length,
+          0
+        );
 
-      const multiplier = getSeatTypeMultiplier(seat_type);
-      const price = totalBasePrice * multiplier;
+        const multiplier = getSeatTypeMultiplier(seat_type);
+        const price = totalBasePrice * multiplier;
 
-      return {
-        seat_type,
-        available: totalAvailable,
-        price: parseFloat(price.toFixed(2)),
-        coaches: coachKeys.map((coach) => ({
-          coach,
-          seat_numbers: coaches[coach] || [],
-        })),
-      };
-    });
+        return {
+          seat_type,
+          available: totalAvailable,
+          price: parseFloat(price.toFixed(2)),
+          coaches: coachKeys.map((coach) => ({
+            coach,
+            seat_numbers: coaches[coach] || [],
+          })),
+        };
+      })
+      .filter((result) => result !== null);
 
     console.log("Formatted Result for trainID", trainID, ":", formattedResult);
 
@@ -243,7 +265,6 @@ export async function GET(request) {
   }
 }
 
-// Handle CORS preflight requests
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
