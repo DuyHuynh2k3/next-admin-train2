@@ -138,11 +138,7 @@ export async function GET(req) {
 
   response.headers.set(
     "Access-Control-Allow-Origin",
-<<<<<<< HEAD
     "http://www.goticket.click"
-=======
-    "http://localhost:3001"
->>>>>>> be4eaea1244fb26753f2d14d11ce3116fb1b6fd3
   );
   response.headers.set(
     "Access-Control-Allow-Methods",
