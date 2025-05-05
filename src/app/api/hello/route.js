@@ -7,7 +7,11 @@ export async function GET() {
 
   // Thêm CORS headers
   const headers = {
+<<<<<<< HEAD
     "Access-Control-Allow-Origin": "http://www.goticket.click", // Cho phép tất cả các domain truy cập
+=======
+    "Access-Control-Allow-Origin": "http://localhost:3001", // Cho phép tất cả các domain truy cập
+>>>>>>> be4eaea1244fb26753f2d14d11ce3116fb1b6fd3
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE", // Cho phép các phương thức
     "Access-Control-Allow-Headers": "Content-Type", // Cho phép các headers
   };

@@ -9,7 +9,7 @@ const TrainPage = () => {
       <h1 style={{ marginBottom: "20px" }}>Quản lí tin tức</h1>
       <SContainer>
         <DataTableCreateBlogs />
-        <ToastContainer /> 
+        <ToastContainer />
       </SContainer>
     </div>
   );

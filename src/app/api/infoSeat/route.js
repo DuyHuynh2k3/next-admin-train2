@@ -8,7 +8,11 @@ const prisma = new PrismaClient();
 
 // CORS headers
 const corsHeaders = {
+<<<<<<< HEAD
   "Access-Control-Allow-Origin": "http://www.goticket.click", // Chỉ định domain frontend
+=======
+  "Access-Control-Allow-Origin": "http://localhost:3001", // Chỉ định domain frontend
+>>>>>>> be4eaea1244fb26753f2d14d11ce3116fb1b6fd3
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };

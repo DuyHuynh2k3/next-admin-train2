@@ -269,19 +269,18 @@ export function DataTableTrain() {
       "days_of_week",
     ];
 
-    // Kiểm tra các trường bắt buộc
     for (const field of requiredFields) {
-      if (!newTrain[field]) {
+      if (!newTrain[field as keyof Train]) {
         toast.error(`Vui lòng điền đầy đủ thông tin cho trường ${field}!`);
         return;
       }
     }
 
-    // Kiểm tra số lượng ga và chặng
     if (!newTrain.stops || newTrain.stops.length < 2) {
       toast.error("Phải có ít nhất 2 ga!");
       return;
     }
+
     if (
       !newTrain.segments ||
       newTrain.segments.length !== newTrain.stops.length - 1
@@ -351,7 +350,6 @@ export function DataTableTrain() {
         setNewTrain({ stops: [], segments: [] });
       } else {
         toast.error(data.error || "Thêm chuyến tàu thất bại");
-        console.error("API error details:", data.details);
       }
     } catch (error) {
       console.error("Error adding train:", error);

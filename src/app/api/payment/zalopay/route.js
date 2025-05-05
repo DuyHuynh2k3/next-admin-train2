@@ -13,7 +13,11 @@ const config = {
 
 // Định nghĩa tiêu đề CORS
 const corsHeaders = {
+<<<<<<< HEAD
   "Access-Control-Allow-Origin": "http://www.goticket.click", // Giới hạn nguồn cụ thể
+=======
+  "Access-Control-Allow-Origin": "http://localhost:3001", // Giới hạn nguồn cụ thể
+>>>>>>> be4eaea1244fb26753f2d14d11ce3116fb1b6fd3
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
@@ -38,7 +42,11 @@ export async function POST(request) {
     }
 
     const embed_data = {
+<<<<<<< HEAD
       redirecturl: `http://www.goticket.click/infoSeat`, // URL động
+=======
+      redirecturl: `http://localhost:3001/infoSeat`, // URL động
+>>>>>>> be4eaea1244fb26753f2d14d11ce3116fb1b6fd3
     };
     const items = [];
     const transID = orderId || Math.floor(Math.random() * 1000000);
