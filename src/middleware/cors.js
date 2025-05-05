@@ -38,11 +38,7 @@ export async function POST(request) {
     const response = await axios.post(config.endpoint, null, { params: order });
     return NextResponse.json(response.data, {
       headers: {
-<<<<<<< HEAD
         "Access-Control-Allow-Origin": "http://www.goticket.click",
-=======
-        "Access-Control-Allow-Origin": "http://localhost:3001",
->>>>>>> be4eaea1244fb26753f2d14d11ce3116fb1b6fd3
         "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type,Authorization",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
