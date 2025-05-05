@@ -1,4 +1,3 @@
-// data-table.tsx
 "use client";
 import { useEffect, useState } from "react";
 import { AiFillEdit, AiFillDelete, AiFillEye } from "react-icons/ai";
@@ -31,7 +30,7 @@ interface Blog {
 
 const DataTableBlogs = ({
   onEdit,
-  onView
+  onView,
 }: {
   onEdit: (blog: Blog) => void;
   onView: (blog: Blog) => void;
@@ -43,11 +42,11 @@ const DataTableBlogs = ({
 
   const fetchBlogs = async () => {
     try {
-      const res = await axios.get("/api/blogs");
-      const blogsWithSections = res.data.map((blog: any) => ({
+      const res = await axios.get<Blog[]>("/api/blogs");
+      const blogsWithSections = res.data.map((blog: Blog) => ({
         ...blog,
         imageUrls: Array.isArray(blog.imageUrls) ? blog.imageUrls : [],
-        sections: Array.isArray(blog.sections) ? blog.sections : []
+        sections: Array.isArray(blog.sections) ? blog.sections : [],
       }));
       setBlogs(blogsWithSections);
       setFilteredBlogs(blogsWithSections);
@@ -74,10 +73,11 @@ const DataTableBlogs = ({
   };
 
   useEffect(() => {
-    const filtered = blogs.filter((blog) =>
-      blog.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (blog.category?.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      blog.content.toLowerCase().includes(searchTerm.toLowerCase())
+    const filtered = blogs.filter(
+      (blog) =>
+        blog.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        blog.category?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        blog.content.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredBlogs(filtered);
   }, [searchTerm, blogs]);
@@ -116,10 +116,10 @@ const DataTableBlogs = ({
               filteredBlogs.map((blog, index) => (
                 <tr key={blog.id} className="border-t hover:bg-gray-50">
                   <td className="p-3 border">{index + 1}</td>
-                  <td className="p-3 border font-medium">
-                    {blog.title}
+                  <td className="p-3 border font-medium">{blog.title}</td>
+                  <td className="p-3 border">
+                    {blog.category?.name || "Không có"}
                   </td>
-                  <td className="p-3 border">{blog.category?.name || "Không có"}</td>
                   <td className="p-3 border">{blog.sections.length}</td>
                   <td className="p-3 border">
                     {new Date(blog.createdAt).toLocaleDateString()}
