@@ -1,8 +1,27 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getStationSegments } from "@/lib/stationSegments";
+import { createClient } from "@redis/client"; // Sử dụng @redis/client
 
 const prisma = new PrismaClient();
+
+// Khởi tạo Redis client toàn cục
+let redisClient;
+async function initRedis() {
+  if (!redisClient) {
+    redisClient = createClient({
+      url: process.env.REDIS_URL || "redis://localhost:6379",
+    });
+    redisClient.on("error", (err) => console.error("Redis Client Error:", err));
+    try {
+      await redisClient.connect();
+    } catch (err) {
+      console.error("Failed to connect to Redis:", err.message);
+      throw err;
+    }
+  }
+  return redisClient;
+}
 
 // CORS headers
 const corsHeaders = {
@@ -44,6 +63,20 @@ export async function GET(request) {
         JSON.stringify({ error: "Missing required parameters" }),
         { status: 400, headers: corsHeaders }
       );
+    }
+
+    // Kiểm tra cache
+    let client;
+    try {
+      client = await initRedis();
+      const cacheKey = `seats:${trainID}:${travelDate}:${fromStationID}:${toStationID}`;
+      const cached = await client.get(cacheKey);
+      if (cached) {
+        console.log("Cache hit for key:", cacheKey);
+        return new NextResponse(cached, { status: 200, headers: corsHeaders });
+      }
+    } catch (redisError) {
+      console.warn("Redis unavailable, skipping cache:", redisError.message);
     }
 
     const dateStart = new Date(travelDate);
@@ -243,6 +276,17 @@ export async function GET(request) {
       .filter((result) => result !== null);
 
     console.log("Formatted Result for trainID", trainID, ":", formattedResult);
+
+    // Lưu vào cache
+    if (client) {
+      try {
+        const cacheKey = `seats:${trainID}:${travelDate}:${fromStationID}:${toStationID}`;
+        await client.setEx(cacheKey, 600, JSON.stringify(formattedResult));
+        console.log("Cached result for key:", cacheKey);
+      } catch (redisError) {
+        console.warn("Failed to cache result:", redisError.message);
+      }
+    }
 
     return new NextResponse(JSON.stringify(formattedResult), {
       status: 200,
