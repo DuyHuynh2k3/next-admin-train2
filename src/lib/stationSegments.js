@@ -1,18 +1,24 @@
-// src/lib/stationSegments.js
 import prisma from "./prisma";
-import redis from "redis";
+import { createClient } from "redis"; // Sử dụng package redis chuẩn
 
 // Khởi tạo Redis client
-const redisClient = redis.createClient({
-  url: process.env.REDIS_URL || "redis://localhost:6379", // Cập nhật URL Redis của bạn
+const redisClient = createClient({
+  url: process.env.REDIS_URL || "redis://localhost:6379",
 });
 
 redisClient.on("error", (err) => console.error("Redis Client Error:", err));
 
-// Kết nối Redis (chỉ gọi một lần khi server khởi động)
-redisClient.connect().catch((err) => {
-  console.error("Không thể kết nối Redis:", err);
-});
+// Kết nối Redis
+let redisConnected = false;
+redisClient
+  .connect()
+  .then(() => {
+    redisConnected = true;
+    console.log("Kết nối Redis thành công");
+  })
+  .catch((err) => {
+    console.error("Không thể kết nối Redis:", err);
+  });
 
 export const getStationSegments = async (
   trainID,
@@ -20,17 +26,27 @@ export const getStationSegments = async (
   toStationId
 ) => {
   try {
-    // Kiểm tra cache
-    const cacheKey = `train_stops:${trainID}`;
-    const cachedStops = await redisClient.get(cacheKey);
     let allStops;
+    const cacheKey = `train_stops:${trainID}`;
 
-    if (cachedStops) {
-      console.log(`Cache hit cho trainID=${trainID}`);
-      allStops = JSON.parse(cachedStops);
-    } else {
-      console.log(`Cache miss cho trainID=${trainID}, truy vấn database`);
-      // Truy vấn chỉ các cột cần thiết
+    // Thử lấy từ cache nếu Redis đã kết nối
+    if (redisConnected) {
+      try {
+        const cachedStops = await redisClient.get(cacheKey);
+        if (cachedStops) {
+          console.log(`Cache hit cho trainID=${trainID}`);
+          allStops = JSON.parse(cachedStops);
+        }
+      } catch (redisError) {
+        console.error("Lỗi khi truy cập Redis:", redisError);
+      }
+    }
+
+    // Nếu không có cache, truy vấn database
+    if (!allStops) {
+      console.log(
+        `Cache miss hoặc Redis không khả dụng cho trainID=${trainID}, truy vấn database`
+      );
       allStops = await prisma.train_stop.findMany({
         where: { trainID },
         orderBy: { stop_order: "asc" },
@@ -40,8 +56,14 @@ export const getStationSegments = async (
         },
       });
 
-      // Lưu vào cache với TTL 1 giờ (3600 giây)
-      await redisClient.setEx(cacheKey, 3600, JSON.stringify(allStops));
+      // Lưu vào cache nếu Redis đã kết nối
+      if (redisConnected) {
+        try {
+          await redisClient.setEx(cacheKey, 3600, JSON.stringify(allStops));
+        } catch (redisError) {
+          console.error("Lỗi khi lưu cache Redis:", redisError);
+        }
+      }
     }
 
     // Tạo Map để tra cứu nhanh stop_order

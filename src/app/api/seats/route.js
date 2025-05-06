@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getStationSegments } from "@/lib/stationSegments";
-import { createClient } from "@redis/client"; // Sử dụng @redis/client
+import { createClient } from "redis"; // Sử dụng package redis chuẩn
 
 const prisma = new PrismaClient();
 
@@ -15,8 +15,9 @@ async function initRedis() {
     redisClient.on("error", (err) => console.error("Redis Client Error:", err));
     try {
       await redisClient.connect();
+      console.log("Kết nối Redis thành công");
     } catch (err) {
-      console.error("Failed to connect to Redis:", err.message);
+      console.error("Không thể kết nối Redis:", err.message);
       throw err;
     }
   }
