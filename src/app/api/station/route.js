@@ -2,14 +2,13 @@ import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { createClient } from "redis";
 
-const prisma = new PrismaClient(); // Không cần cấu hình datasources, lấy DATABASE_URL từ .env
+const prisma = new PrismaClient();
 
-// Khởi tạo Redis client toàn cục
 let redisClient;
 async function initRedis() {
   if (!redisClient) {
     redisClient = createClient({
-      url: process.env.REDIS_URL || "redis://localhost:6379", // Cập nhật trên EC2
+      url: process.env.REDIS_URL || "redis://172.17.0.3:6379",
     });
     redisClient.on("error", (err) => console.error("Redis Client Error:", err));
     try {
@@ -22,16 +21,14 @@ async function initRedis() {
   return redisClient;
 }
 
-// CORS headers
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "http://www.goticket.click", // Cập nhật cho production
+  "Access-Control-Allow-Origin": "http://www.goticket.click",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
 export async function GET() {
   try {
-    // Kiểm tra cache Redis
     let client;
     try {
       client = await initRedis();
@@ -40,11 +37,11 @@ export async function GET() {
         console.log("Cache hit for stations");
         return new NextResponse(cached, { status: 200, headers: corsHeaders });
       }
+      console.log("Cache miss for stations");
     } catch (redisError) {
       console.warn("Redis unavailable, skipping cache:", redisError.message);
     }
 
-    // Truy vấn database nếu không có cache
     const stations = await prisma.station.findMany({
       select: {
         station_id: true,
@@ -61,10 +58,9 @@ export async function GET() {
       );
     }
 
-    // Lưu vào cache với TTL 1 giờ (3600 giây)
     if (client) {
       try {
-        await client.setEx("stations", 3600, JSON.stringify(stations));
+        await client.setEx("stations", 86400, JSON.stringify(stations)); // TTL 24h
         console.log("Cached stations");
       } catch (redisError) {
         console.warn("Failed to cache stations:", redisError.message);
