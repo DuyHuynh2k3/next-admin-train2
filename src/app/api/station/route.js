@@ -1,23 +1,49 @@
+//src/app/api/station/route.js:
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { createClient } from "redis";
 
 const prisma = new PrismaClient();
 
-let redisClient;
+// Singleton Redis client
+let redisClient = null;
+let redisConnected = false;
+
 async function initRedis() {
-  if (!redisClient) {
-    redisClient = createClient({
-      url: process.env.REDIS_URL || "redis://172.17.0.3:6379",
-    });
-    redisClient.on("error", (err) => console.error("Redis Client Error:", err));
-    try {
-      await redisClient.connect();
-      console.log("Kết nối Redis thành công");
-    } catch (err) {
-      console.error("Không thể kết nối Redis:", err.message);
-    }
+  if (redisClient && redisConnected) {
+    return redisClient; // Tái sử dụng client đã kết nối
   }
+
+  redisClient = createClient({
+    url: process.env.REDIS_URL || "redis://172.17.0.3:6379",
+    socket: {
+      reconnectStrategy: (retries) => {
+        if (retries > 3) {
+          console.error("Hết lần thử kết nối Redis, bỏ qua cache.");
+          return new Error("Hết lần thử kết nối Redis");
+        }
+        return Math.min(retries * 1000, 3000); // Retry sau 1s, 2s, 3s
+      },
+    },
+  });
+
+  redisClient.on("error", (err) => console.error("Redis Client Error:", err));
+  redisClient.on("connect", () => {
+    redisConnected = true;
+    console.log("Kết nối Redis thành công");
+  });
+  redisClient.on("end", () => {
+    redisConnected = false;
+    console.log("Mất kết nối Redis");
+  });
+
+  try {
+    await redisClient.connect();
+  } catch (err) {
+    console.error("Không thể kết nối Redis:", err.message);
+    redisConnected = false;
+  }
+
   return redisClient;
 }
 
@@ -28,20 +54,34 @@ const corsHeaders = {
 };
 
 export async function GET() {
+  let client;
   try {
-    let client;
-    try {
-      client = await initRedis();
-      const cached = await client.get("stations");
-      if (cached) {
-        console.log("Cache hit for stations");
-        return new NextResponse(cached, { status: 200, headers: corsHeaders });
+    // Khởi tạo Redis client
+    client = await initRedis();
+
+    // Kiểm tra cache
+    if (redisConnected) {
+      try {
+        const cached = await client.get("stations");
+        if (cached) {
+          console.log("Cache hit for stations");
+          return new NextResponse(cached, {
+            status: 200,
+            headers: corsHeaders,
+          });
+        }
+        console.log("Cache miss for stations");
+      } catch (redisError) {
+        console.warn(
+          "Lỗi khi truy cập Redis, bỏ qua cache:",
+          redisError.message
+        );
       }
-      console.log("Cache miss for stations");
-    } catch (redisError) {
-      console.warn("Redis unavailable, skipping cache:", redisError.message);
+    } else {
+      console.warn("Redis không khả dụng, bỏ qua cache");
     }
 
+    // Truy vấn database nếu không có cache
     const stations = await prisma.station.findMany({
       select: {
         station_id: true,
@@ -58,12 +98,13 @@ export async function GET() {
       );
     }
 
-    if (client) {
+    // Lưu vào cache nếu Redis khả dụng
+    if (redisConnected) {
       try {
         await client.setEx("stations", 86400, JSON.stringify(stations)); // TTL 24h
         console.log("Cached stations");
       } catch (redisError) {
-        console.warn("Failed to cache stations:", redisError.message);
+        console.warn("Không thể lưu cache stations:", redisError.message);
       }
     }
 
@@ -72,7 +113,7 @@ export async function GET() {
       headers: corsHeaders,
     });
   } catch (error) {
-    console.error("Error fetching stations:", {
+    console.error("Lỗi khi lấy stations:", {
       message: error.message,
       stack: error.stack,
     });
