@@ -1,18 +1,50 @@
-// src/app/api/station/route.js
-import { PrismaClient } from "@prisma/client";
 import { NextResponse } from "next/server";
+import { PrismaClient } from "@prisma/client";
+import { createClient } from "redis";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient(); // Không cần cấu hình datasources, lấy DATABASE_URL từ .env
+
+// Khởi tạo Redis client toàn cục
+let redisClient;
+async function initRedis() {
+  if (!redisClient) {
+    redisClient = createClient({
+      url: process.env.REDIS_URL || "redis://localhost:6379", // Cập nhật trên EC2
+    });
+    redisClient.on("error", (err) => console.error("Redis Client Error:", err));
+    try {
+      await redisClient.connect();
+      console.log("Kết nối Redis thành công");
+    } catch (err) {
+      console.error("Không thể kết nối Redis:", err.message);
+    }
+  }
+  return redisClient;
+}
 
 // CORS headers
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "http://www.goticket.click",
+  "Access-Control-Allow-Origin": "http://www.goticket.click", // Cập nhật cho production
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
 export async function GET() {
   try {
+    // Kiểm tra cache Redis
+    let client;
+    try {
+      client = await initRedis();
+      const cached = await client.get("stations");
+      if (cached) {
+        console.log("Cache hit for stations");
+        return new NextResponse(cached, { status: 200, headers: corsHeaders });
+      }
+    } catch (redisError) {
+      console.warn("Redis unavailable, skipping cache:", redisError.message);
+    }
+
+    // Truy vấn database nếu không có cache
     const stations = await prisma.station.findMany({
       select: {
         station_id: true,
@@ -27,6 +59,16 @@ export async function GET() {
         JSON.stringify({ error: "Không tìm thấy ga nào" }),
         { status: 404, headers: corsHeaders }
       );
+    }
+
+    // Lưu vào cache với TTL 1 giờ (3600 giây)
+    if (client) {
+      try {
+        await client.setEx("stations", 3600, JSON.stringify(stations));
+        console.log("Cached stations");
+      } catch (redisError) {
+        console.warn("Failed to cache stations:", redisError.message);
+      }
     }
 
     return new NextResponse(JSON.stringify(stations), {
@@ -47,7 +89,6 @@ export async function GET() {
   }
 }
 
-// Xử lý yêu cầu OPTIONS (preflight CORS)
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
