@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getStationSegments } from "@/lib/stationSegments";
-import { createClient } from "redis"; // Sử dụng package redis chuẩn
+import { createClient } from "redis";
 
 const prisma = new PrismaClient();
 
@@ -11,11 +11,31 @@ async function initRedis() {
   if (!redisClient) {
     redisClient = createClient({
       url: process.env.REDIS_URL || "redis://localhost:6379",
+      socket: {
+        tls: process.env.REDIS_URL?.startsWith("rediss://"), // Bật TLS nếu dùng rediss://
+        connectTimeout: 5000, // Timeout 5 giây
+        reconnectStrategy: (retries) => {
+          if (retries > 3) {
+            console.error("Hết lần thử kết nối Redis, bỏ qua cache.");
+            return new Error("Hết lần thử kết nối Redis");
+          }
+          return Math.min(retries * 1000, 3000);
+        },
+      },
+      retryStrategy: (times) => {
+        return Math.min(times * 100, 2000); // Retry tối đa 2 giây
+      },
     });
     redisClient.on("error", (err) => console.error("Redis Client Error:", err));
+    redisClient.on("connect", () => {
+      console.log("Kết nối Redis thành công");
+    });
+    redisClient.on("end", () => {
+      console.log("Mất kết nối Redis");
+    });
+
     try {
       await redisClient.connect();
-      console.log("Kết nối Redis thành công");
     } catch (err) {
       console.error("Không thể kết nối Redis:", err.message);
       throw err;
@@ -76,6 +96,7 @@ export async function GET(request) {
         console.log("Cache hit for key:", cacheKey);
         return new NextResponse(cached, { status: 200, headers: corsHeaders });
       }
+      console.log("Cache miss for key:", cacheKey);
     } catch (redisError) {
       console.warn("Redis unavailable, skipping cache:", redisError.message);
     }

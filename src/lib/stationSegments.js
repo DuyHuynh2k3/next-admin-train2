@@ -1,24 +1,52 @@
 import prisma from "./prisma";
-import { createClient } from "redis"; // Sử dụng package redis chuẩn
+import { createClient } from "redis";
 
 // Khởi tạo Redis client
-const redisClient = createClient({
-  url: process.env.REDIS_URL || "redis://localhost:6379",
-});
-
-redisClient.on("error", (err) => console.error("Redis Client Error:", err));
-
-// Kết nối Redis
+let redisClient;
 let redisConnected = false;
-redisClient
-  .connect()
-  .then(() => {
+
+async function initRedis() {
+  if (redisClient && redisConnected) {
+    return redisClient;
+  }
+
+  redisClient = createClient({
+    url: process.env.REDIS_URL || "redis://localhost:6379",
+    socket: {
+      tls: process.env.REDIS_URL?.startsWith("rediss://"),
+      connectTimeout: 5000,
+      reconnectStrategy: (retries) => {
+        if (retries > 3) {
+          console.error("Hết lần thử kết nối Redis, bỏ qua cache.");
+          return new Error("Hết lần thử kết nối Redis");
+        }
+        return Math.min(retries * 1000, 3000);
+      },
+    },
+    retryStrategy: (times) => {
+      return Math.min(times * 100, 2000);
+    },
+  });
+
+  redisClient.on("error", (err) => console.error("Redis Client Error:", err));
+  redisClient.on("connect", () => {
     redisConnected = true;
     console.log("Kết nối Redis thành công");
-  })
-  .catch((err) => {
-    console.error("Không thể kết nối Redis:", err);
   });
+  redisClient.on("end", () => {
+    redisConnected = false;
+    console.log("Mất kết nối Redis");
+  });
+
+  try {
+    await redisClient.connect();
+  } catch (err) {
+    console.error("Không thể kết nối Redis:", err.message);
+    redisConnected = false;
+  }
+
+  return redisClient;
+}
 
 export const getStationSegments = async (
   trainID,
@@ -30,16 +58,21 @@ export const getStationSegments = async (
     const cacheKey = `train_stops:${trainID}`;
 
     // Thử lấy từ cache nếu Redis đã kết nối
+    const client = await initRedis();
     if (redisConnected) {
       try {
-        const cachedStops = await redisClient.get(cacheKey);
+        const cachedStops = await client.get(cacheKey);
         if (cachedStops) {
           console.log(`Cache hit cho trainID=${trainID}`);
           allStops = JSON.parse(cachedStops);
+        } else {
+          console.log(`Cache miss cho trainID=${trainID}`);
         }
       } catch (redisError) {
         console.error("Lỗi khi truy cập Redis:", redisError);
       }
+    } else {
+      console.warn("Redis không khả dụng, bỏ qua cache");
     }
 
     // Nếu không có cache, truy vấn database
@@ -59,7 +92,8 @@ export const getStationSegments = async (
       // Lưu vào cache nếu Redis đã kết nối
       if (redisConnected) {
         try {
-          await redisClient.setEx(cacheKey, 3600, JSON.stringify(allStops));
+          await client.setEx(cacheKey, 3600, JSON.stringify(allStops));
+          console.log(`Cached train_stops cho trainID=${trainID}`);
         } catch (redisError) {
           console.error("Lỗi khi lưu cache Redis:", redisError);
         }

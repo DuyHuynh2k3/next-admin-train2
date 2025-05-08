@@ -1,4 +1,3 @@
-//src/app/api/station/route.js:
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { createClient } from "redis";
@@ -17,6 +16,8 @@ async function initRedis() {
   redisClient = createClient({
     url: process.env.REDIS_URL || "redis://172.17.0.3:6379",
     socket: {
+      tls: process.env.REDIS_URL?.startsWith("rediss://"), // Bật TLS nếu dùng rediss://
+      connectTimeout: 5000, // Timeout 5 giây
       reconnectStrategy: (retries) => {
         if (retries > 3) {
           console.error("Hết lần thử kết nối Redis, bỏ qua cache.");
@@ -24,6 +25,9 @@ async function initRedis() {
         }
         return Math.min(retries * 1000, 3000); // Retry sau 1s, 2s, 3s
       },
+    },
+    retryStrategy: (times) => {
+      return Math.min(times * 100, 2000); // Retry tối đa 2 giây
     },
   });
 
