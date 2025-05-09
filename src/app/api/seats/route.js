@@ -12,8 +12,8 @@ async function initRedis() {
     redisClient = createClient({
       url: process.env.REDIS_URL || "redis://localhost:6379",
       socket: {
-        tls: process.env.REDIS_URL?.startsWith("rediss://"),
-        connectTimeout: 5000,
+        tls: process.env.REDIS_URL?.startsWith("rediss://"), // Bật TLS nếu dùng rediss://
+        connectTimeout: 5000, // Timeout 5 giây
         reconnectStrategy: (retries) => {
           if (retries > 3) {
             console.error("Hết lần thử kết nối Redis, bỏ qua cache.");
@@ -22,12 +22,17 @@ async function initRedis() {
           return Math.min(retries * 1000, 3000);
         },
       },
-      retryStrategy: (times) => Math.min(times * 100, 2000),
+      retryStrategy: (times) => {
+        return Math.min(times * 100, 2000); // Retry tối đa 2 giây
+      },
     });
-
     redisClient.on("error", (err) => console.error("Redis Client Error:", err));
-    redisClient.on("connect", () => console.log("Kết nối Redis thành công"));
-    redisClient.on("end", () => console.log("Mất kết nối Redis"));
+    redisClient.on("connect", () => {
+      console.log("Kết nối Redis thành công");
+    });
+    redisClient.on("end", () => {
+      console.log("Mất kết nối Redis");
+    });
 
     try {
       await redisClient.connect();
@@ -67,7 +72,7 @@ export async function GET(request) {
     const fromStationID = parseInt(searchParams.get("from_station_id"));
     const toStationID = parseInt(searchParams.get("to_station_id"));
 
-    console.log("Yêu cầu tham số:", {
+    console.log("Request Params:", {
       trainID,
       travelDate,
       fromStationID,
@@ -75,14 +80,8 @@ export async function GET(request) {
     });
 
     if (!trainID || !travelDate || !fromStationID || !toStationID) {
-      console.error("Thiếu tham số bắt buộc:", {
-        trainID,
-        travelDate,
-        fromStationID,
-        toStationID,
-      });
       return new NextResponse(
-        JSON.stringify({ error: "Thiếu tham số bắt buộc" }),
+        JSON.stringify({ error: "Missing required parameters" }),
         { status: 400, headers: corsHeaders }
       );
     }
@@ -90,35 +89,23 @@ export async function GET(request) {
     // Kiểm tra cache
     let client;
     try {
-      if (process.env.NODE_ENV !== "test") {
-        // Bỏ qua cache trong môi trường kiểm tra
-        client = await initRedis();
-        if (client.isOpen) {
-          const cacheKey = `seats:${trainID}:${travelDate}:${fromStationID}:${toStationID}`;
-          const cached = await client.get(cacheKey);
-          if (cached) {
-            console.log("Cache hit cho key:", cacheKey);
-            return new NextResponse(cached, {
-              status: 200,
-              headers: corsHeaders,
-            });
-          }
-          console.log("Cache miss cho key:", cacheKey);
-        } else {
-          console.warn("Redis không kết nối, bỏ qua cache");
-        }
-      } else {
-        console.log("Bỏ qua cache Redis trong môi trường kiểm tra");
+      client = await initRedis();
+      const cacheKey = `seats:${trainID}:${travelDate}:${fromStationID}:${toStationID}`;
+      const cached = await client.get(cacheKey);
+      if (cached) {
+        console.log("Cache hit for key:", cacheKey);
+        return new NextResponse(cached, { status: 200, headers: corsHeaders });
       }
+      console.log("Cache miss for key:", cacheKey);
     } catch (redisError) {
-      console.warn("Redis không khả dụng, bỏ qua cache:", redisError.message);
+      console.warn("Redis unavailable, skipping cache:", redisError.message);
     }
 
     const dateStart = new Date(travelDate);
     dateStart.setUTCHours(0, 0, 0, 0);
-    console.log("Ngày được chuyển đổi:", dateStart.toISOString());
+    console.log("Converted Date:", dateStart);
 
-    // Lấy ghế từ seattrain
+    // Lấy ghế với các cột cần thiết
     const seats = await prisma.seattrain.findMany({
       where: {
         trainID: trainID,
@@ -133,17 +120,12 @@ export async function GET(request) {
       },
     });
 
-    console.log(
-      `Tìm thấy ${seats.length} ghế cho trainID ${trainID} ngày ${travelDate}`
-    );
+    console.log("Seats Before Availability for trainID", trainID, ":", seats);
 
     if (seats.length === 0) {
-      console.warn(
-        `Không tìm thấy ghế trong seattrain cho trainID ${trainID} ngày ${travelDate}`
-      );
       return new NextResponse(
         JSON.stringify({
-          error: "Không tìm thấy ghế cho tàu này vào ngày đã chọn",
+          error: "No seats found for this train on the specified date",
         }),
         { status: 404, headers: corsHeaders }
       );
@@ -163,11 +145,10 @@ export async function GET(request) {
     }));
 
     if (segmentsToSum.length === 0) {
-      console.warn(
-        `Không tìm thấy đoạn tuyến cho trainID ${trainID} từ ga ${fromStationID} đến ${toStationID}`
-      );
       return new NextResponse(
-        JSON.stringify({ error: "Không tìm thấy đoạn tuyến giữa các ga" }),
+        JSON.stringify({
+          error: "No route segments found between the stations",
+        }),
         { status: 400, headers: corsHeaders }
       );
     }
@@ -184,6 +165,7 @@ export async function GET(request) {
           seatID: { in: seatIDs },
           trainID: trainID,
           travel_date: dateStart,
+          is_available: true,
           OR: segmentConditions,
         },
         select: {
@@ -196,29 +178,47 @@ export async function GET(request) {
     );
 
     console.log(
-      "Đoạn khả dụng cho trainID",
+      "Availability Segments for trainID",
       trainID,
       ":",
-      segmentAvailability.length
+      segmentAvailability
     );
 
-    // Kiểm tra trạng thái ghế
     const seatsWithAvailability = seats.map((seat) => {
       const seatAvailability = segmentAvailability.filter(
         (avail) => avail.seatID === seat.seatID
       );
-      const isAvailable =
-        seat.is_available &&
-        segmentsToSum.every((segment) => {
-          const match = seatAvailability.find(
-            (avail) =>
-              avail.from_station_id === segment.from &&
-              avail.to_station_id === segment.to
-          );
-          return match ? match.is_available : false;
-        });
-      return { ...seat, is_available: isAvailable };
+      return {
+        ...seat,
+        seat_availability_segment: seatAvailability,
+      };
     });
+
+    console.log(
+      "Seats With Availability for trainID",
+      trainID,
+      ":",
+      seatsWithAvailability
+    );
+
+    const availableSeats = seatsWithAvailability.filter((seat) => {
+      const availabilitySegments = seat.seat_availability_segment;
+      return segmentsToSum.every((segment) => {
+        const match = availabilitySegments.find(
+          (avail) =>
+            avail.from_station_id === segment.from &&
+            avail.to_station_id === segment.to
+        );
+        return match && match.is_available === true;
+      });
+    });
+
+    console.log(
+      "Available Seats After Filter for trainID",
+      trainID,
+      ":",
+      availableSeats
+    );
 
     // Tính tổng base_price từ route_segment
     let totalBasePrice = 0;
@@ -228,16 +228,15 @@ export async function GET(request) {
           from_station_id: segment.from,
           to_station_id: segment.to,
         },
-        select: { base_price: true },
+        select: {
+          base_price: true,
+        },
       });
 
       if (!routeSegment) {
-        console.warn(
-          `Không tìm thấy đoạn tuyến từ ga ${segment.from} đến ${segment.to}`
-        );
         return new NextResponse(
           JSON.stringify({
-            error: `Không tìm thấy đoạn tuyến từ ga ${segment.from} đến ${segment.to}`,
+            error: `No route segment found between stations ${segment.from} and ${segment.to}`,
           }),
           { status: 400, headers: corsHeaders }
         );
@@ -246,20 +245,28 @@ export async function GET(request) {
       totalBasePrice += parseFloat(routeSegment.base_price);
     }
 
-    console.log("Tổng giá cơ bản cho các đoạn:", totalBasePrice);
+    console.log("Total Base Price for segments:", totalBasePrice);
 
     // Nhóm ghế theo seat_type và coach
     const seatMap = {};
-    seatsWithAvailability.forEach((seat) => {
+    seats.forEach((seat) => {
       const seat_type = seat.seat_type;
       const coach = seat.coach;
 
-      if (!seatMap[seat_type]) seatMap[seat_type] = {};
-      if (!seatMap[seat_type][coach]) seatMap[seat_type][coach] = [];
+      if (!seatMap[seat_type]) {
+        seatMap[seat_type] = {};
+      }
+      if (!seatMap[seat_type][coach]) {
+        seatMap[seat_type][coach] = [];
+      }
+
+      const isAvailable = availableSeats.some(
+        (availableSeat) => availableSeat.seatID === seat.seatID
+      );
 
       seatMap[seat_type][coach].push({
         seat_number: seat.seat_number,
-        is_available: seat.is_available,
+        is_available: isAvailable,
       });
     });
 
@@ -290,16 +297,16 @@ export async function GET(request) {
       })
       .filter((result) => result !== null);
 
-    console.log("Kết quả định dạng cho trainID", trainID, ":", formattedResult);
+    console.log("Formatted Result for trainID", trainID, ":", formattedResult);
 
     // Lưu vào cache
-    if (client && client.isOpen) {
+    if (client) {
       try {
         const cacheKey = `seats:${trainID}:${travelDate}:${fromStationID}:${toStationID}`;
-        await client.setEx(cacheKey, 3600, JSON.stringify(formattedResult));
-        console.log("Đã lưu cache cho key:", cacheKey);
+        await client.setEx(cacheKey, 600, JSON.stringify(formattedResult));
+        console.log("Cached result for key:", cacheKey);
       } catch (redisError) {
-        console.warn("Không thể lưu cache:", redisError.message);
+        console.warn("Failed to cache result:", redisError.message);
       }
     }
 
@@ -308,17 +315,14 @@ export async function GET(request) {
       headers: corsHeaders,
     });
   } catch (error) {
-    console.error("Lỗi khi lấy ghế:", {
+    console.error("Error fetching seats:", {
       message: error.message,
       stack: error.stack,
-      code: error.code,
-      meta: error.meta,
     });
     return new NextResponse(
       JSON.stringify({
-        error: "Lỗi hệ thống",
-        details:
-          process.env.NODE_ENV === "development" ? error.message : undefined,
+        error: "Internal server error",
+        details: error.message,
       }),
       { status: 500, headers: corsHeaders }
     );
