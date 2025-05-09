@@ -22,10 +22,9 @@ async function initRedis() {
           return Math.min(retries * 1000, 3000);
         },
       },
-      retryStrategy: (times) => {
-        return Math.min(times * 100, 2000);
-      },
+      retryStrategy: (times) => Math.min(times * 100, 2000),
     });
+
     redisClient.on("error", (err) => console.error("Redis Client Error:", err));
     redisClient.on("connect", () => console.log("Kết nối Redis thành công"));
     redisClient.on("end", () => console.log("Mất kết nối Redis"));
@@ -68,7 +67,7 @@ export async function GET(request) {
     const fromStationID = parseInt(searchParams.get("from_station_id"));
     const toStationID = parseInt(searchParams.get("to_station_id"));
 
-    console.log("Request Params:", {
+    console.log("Yêu cầu tham số:", {
       trainID,
       travelDate,
       fromStationID,
@@ -76,8 +75,14 @@ export async function GET(request) {
     });
 
     if (!trainID || !travelDate || !fromStationID || !toStationID) {
+      console.error("Thiếu tham số bắt buộc:", {
+        trainID,
+        travelDate,
+        fromStationID,
+        toStationID,
+      });
       return new NextResponse(
-        JSON.stringify({ error: "Missing required parameters" }),
+        JSON.stringify({ error: "Thiếu tham số bắt buộc" }),
         { status: 400, headers: corsHeaders }
       );
     }
@@ -86,20 +91,27 @@ export async function GET(request) {
     let client;
     try {
       client = await initRedis();
-      const cacheKey = `seats:${trainID}:${travelDate}:${fromStationID}:${toStationID}`;
-      const cached = await client.get(cacheKey);
-      if (cached) {
-        console.log("Cache hit for key:", cacheKey);
-        return new NextResponse(cached, { status: 200, headers: corsHeaders });
+      if (client.isOpen) {
+        const cacheKey = `seats:${trainID}:${travelDate}:${fromStationID}:${toStationID}`;
+        const cached = await client.get(cacheKey);
+        if (cached) {
+          console.log("Cache hit cho key:", cacheKey);
+          return new NextResponse(cached, {
+            status: 200,
+            headers: corsHeaders,
+          });
+        }
+        console.log("Cache miss cho key:", cacheKey);
+      } else {
+        console.warn("Redis không kết nối, bỏ qua cache");
       }
-      console.log("Cache miss for key:", cacheKey);
     } catch (redisError) {
-      console.warn("Redis unavailable, skipping cache:", redisError.message);
+      console.warn("Redis không khả dụng, bỏ qua cache:", redisError.message);
     }
 
     const dateStart = new Date(travelDate);
     dateStart.setUTCHours(0, 0, 0, 0);
-    console.log("Converted Date:", dateStart);
+    console.log("Ngày được chuyển đổi:", dateStart.toISOString());
 
     // Lấy ghế từ seattrain
     const seats = await prisma.seattrain.findMany({
@@ -116,15 +128,17 @@ export async function GET(request) {
       },
     });
 
-    console.log("Seats Before Availability for trainID", trainID, ":", seats);
+    console.log(
+      `Tìm thấy ${seats.length} ghế cho trainID ${trainID} ngày ${travelDate}`
+    );
 
     if (seats.length === 0) {
       console.warn(
-        `No seats found in seattrain for trainID ${trainID} on ${travelDate}`
+        `Không tìm thấy ghế trong seattrain cho trainID ${trainID} ngày ${travelDate}`
       );
       return new NextResponse(
         JSON.stringify({
-          error: "No seats found for this train on the specified date",
+          error: "Không tìm thấy ghế cho tàu này vào ngày đã chọn",
         }),
         { status: 404, headers: corsHeaders }
       );
@@ -145,12 +159,10 @@ export async function GET(request) {
 
     if (segmentsToSum.length === 0) {
       console.warn(
-        `No route segments found for trainID ${trainID} between stations ${fromStationID} and ${toStationID}`
+        `Không tìm thấy đoạn tuyến cho trainID ${trainID} từ ga ${fromStationID} đến ${toStationID}`
       );
       return new NextResponse(
-        JSON.stringify({
-          error: "No route segments found between the stations",
-        }),
+        JSON.stringify({ error: "Không tìm thấy đoạn tuyến giữa các ga" }),
         { status: 400, headers: corsHeaders }
       );
     }
@@ -167,7 +179,6 @@ export async function GET(request) {
           seatID: { in: seatIDs },
           trainID: trainID,
           travel_date: dateStart,
-          OR: segmentConditions,
         },
         select: {
           seatID: true,
@@ -179,10 +190,10 @@ export async function GET(request) {
     );
 
     console.log(
-      "Availability Segments for trainID",
+      "Đoạn khả dụng cho trainID",
       trainID,
       ":",
-      segmentAvailability
+      segmentAvailability.length
     );
 
     // Kiểm tra trạng thái ghế
@@ -190,7 +201,6 @@ export async function GET(request) {
       const seatAvailability = segmentAvailability.filter(
         (avail) => avail.seatID === seat.seatID
       );
-      // Ghế chỉ khả dụng nếu seattrain.is_available = true và tất cả đoạn hành trình đều khả dụng
       const isAvailable =
         seat.is_available &&
         segmentsToSum.every((segment) => {
@@ -201,18 +211,8 @@ export async function GET(request) {
           );
           return match ? match.is_available : false;
         });
-      return {
-        ...seat,
-        is_available: isAvailable,
-      };
+      return { ...seat, is_available: isAvailable };
     });
-
-    console.log(
-      "Seats With Availability for trainID",
-      trainID,
-      ":",
-      seatsWithAvailability
-    );
 
     // Tính tổng base_price từ route_segment
     let totalBasePrice = 0;
@@ -222,18 +222,16 @@ export async function GET(request) {
           from_station_id: segment.from,
           to_station_id: segment.to,
         },
-        select: {
-          base_price: true,
-        },
+        select: { base_price: true },
       });
 
       if (!routeSegment) {
         console.warn(
-          `No route segment found between stations ${segment.from} and ${segment.to}`
+          `Không tìm thấy đoạn tuyến từ ga ${segment.from} đến ${segment.to}`
         );
         return new NextResponse(
           JSON.stringify({
-            error: `No route segment found between stations ${segment.from} and ${segment.to}`,
+            error: `Không tìm thấy đoạn tuyến từ ga ${segment.from} đến ${segment.to}`,
           }),
           { status: 400, headers: corsHeaders }
         );
@@ -242,7 +240,7 @@ export async function GET(request) {
       totalBasePrice += parseFloat(routeSegment.base_price);
     }
 
-    console.log("Total Base Price for segments:", totalBasePrice);
+    console.log("Tổng giá cơ bản cho các đoạn:", totalBasePrice);
 
     // Nhóm ghế theo seat_type và coach
     const seatMap = {};
@@ -250,12 +248,8 @@ export async function GET(request) {
       const seat_type = seat.seat_type;
       const coach = seat.coach;
 
-      if (!seatMap[seat_type]) {
-        seatMap[seat_type] = {};
-      }
-      if (!seatMap[seat_type][coach]) {
-        seatMap[seat_type][coach] = [];
-      }
+      if (!seatMap[seat_type]) seatMap[seat_type] = {};
+      if (!seatMap[seat_type][coach]) seatMap[seat_type][coach] = [];
 
       seatMap[seat_type][coach].push({
         seat_number: seat.seat_number,
@@ -290,16 +284,16 @@ export async function GET(request) {
       })
       .filter((result) => result !== null);
 
-    console.log("Formatted Result for trainID", trainID, ":", formattedResult);
+    console.log("Kết quả định dạng cho trainID", trainID, ":", formattedResult);
 
     // Lưu vào cache
-    if (client) {
+    if (client && client.isOpen) {
       try {
         const cacheKey = `seats:${trainID}:${travelDate}:${fromStationID}:${toStationID}`;
-        await client.setEx(cacheKey, 600, JSON.stringify(formattedResult));
-        console.log("Cached result for key:", cacheKey);
+        await client.setEx(cacheKey, 3600, JSON.stringify(formattedResult)); // TTL tăng lên 1 giờ
+        console.log("Đã lưu cache cho key:", cacheKey);
       } catch (redisError) {
-        console.warn("Failed to cache result:", redisError.message);
+        console.warn("Không thể lưu cache:", redisError.message);
       }
     }
 
@@ -308,14 +302,17 @@ export async function GET(request) {
       headers: corsHeaders,
     });
   } catch (error) {
-    console.error("Error fetching seats:", {
+    console.error("Lỗi khi lấy ghế:", {
       message: error.message,
       stack: error.stack,
+      code: error.code,
+      meta: error.meta,
     });
     return new NextResponse(
       JSON.stringify({
-        error: "Internal server error",
-        details: error.message,
+        error: "Lỗi hệ thống",
+        details:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
       }),
       { status: 500, headers: corsHeaders }
     );
