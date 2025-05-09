@@ -12,8 +12,8 @@ async function initRedis() {
     redisClient = createClient({
       url: process.env.REDIS_URL || "redis://localhost:6379",
       socket: {
-        tls: process.env.REDIS_URL?.startsWith("rediss://"), // Bật TLS nếu dùng rediss://
-        connectTimeout: 5000, // Timeout 5 giây
+        tls: process.env.REDIS_URL?.startsWith("rediss://"),
+        connectTimeout: 5000,
         reconnectStrategy: (retries) => {
           if (retries > 3) {
             console.error("Hết lần thử kết nối Redis, bỏ qua cache.");
@@ -23,16 +23,12 @@ async function initRedis() {
         },
       },
       retryStrategy: (times) => {
-        return Math.min(times * 100, 2000); // Retry tối đa 2 giây
+        return Math.min(times * 100, 2000);
       },
     });
     redisClient.on("error", (err) => console.error("Redis Client Error:", err));
-    redisClient.on("connect", () => {
-      console.log("Kết nối Redis thành công");
-    });
-    redisClient.on("end", () => {
-      console.log("Mất kết nối Redis");
-    });
+    redisClient.on("connect", () => console.log("Kết nối Redis thành công"));
+    redisClient.on("end", () => console.log("Mất kết nối Redis"));
 
     try {
       await redisClient.connect();
@@ -105,7 +101,7 @@ export async function GET(request) {
     dateStart.setUTCHours(0, 0, 0, 0);
     console.log("Converted Date:", dateStart);
 
-    // Lấy ghế với các cột cần thiết
+    // Lấy ghế từ seattrain
     const seats = await prisma.seattrain.findMany({
       where: {
         trainID: trainID,
@@ -123,6 +119,9 @@ export async function GET(request) {
     console.log("Seats Before Availability for trainID", trainID, ":", seats);
 
     if (seats.length === 0) {
+      console.warn(
+        `No seats found in seattrain for trainID ${trainID} on ${travelDate}`
+      );
       return new NextResponse(
         JSON.stringify({
           error: "No seats found for this train on the specified date",
@@ -145,6 +144,9 @@ export async function GET(request) {
     }));
 
     if (segmentsToSum.length === 0) {
+      console.warn(
+        `No route segments found for trainID ${trainID} between stations ${fromStationID} and ${toStationID}`
+      );
       return new NextResponse(
         JSON.stringify({
           error: "No route segments found between the stations",
@@ -165,7 +167,6 @@ export async function GET(request) {
           seatID: { in: seatIDs },
           trainID: trainID,
           travel_date: dateStart,
-          is_available: true,
           OR: segmentConditions,
         },
         select: {
@@ -184,13 +185,25 @@ export async function GET(request) {
       segmentAvailability
     );
 
+    // Kiểm tra trạng thái ghế
     const seatsWithAvailability = seats.map((seat) => {
       const seatAvailability = segmentAvailability.filter(
         (avail) => avail.seatID === seat.seatID
       );
+      // Ghế chỉ khả dụng nếu seattrain.is_available = true và tất cả đoạn hành trình đều khả dụng
+      const isAvailable =
+        seat.is_available &&
+        segmentsToSum.every((segment) => {
+          const match = seatAvailability.find(
+            (avail) =>
+              avail.from_station_id === segment.from &&
+              avail.to_station_id === segment.to
+          );
+          return match ? match.is_available : false;
+        });
       return {
         ...seat,
-        seat_availability_segment: seatAvailability,
+        is_available: isAvailable,
       };
     });
 
@@ -199,25 +212,6 @@ export async function GET(request) {
       trainID,
       ":",
       seatsWithAvailability
-    );
-
-    const availableSeats = seatsWithAvailability.filter((seat) => {
-      const availabilitySegments = seat.seat_availability_segment;
-      return segmentsToSum.every((segment) => {
-        const match = availabilitySegments.find(
-          (avail) =>
-            avail.from_station_id === segment.from &&
-            avail.to_station_id === segment.to
-        );
-        return match && match.is_available === true;
-      });
-    });
-
-    console.log(
-      "Available Seats After Filter for trainID",
-      trainID,
-      ":",
-      availableSeats
     );
 
     // Tính tổng base_price từ route_segment
@@ -234,6 +228,9 @@ export async function GET(request) {
       });
 
       if (!routeSegment) {
+        console.warn(
+          `No route segment found between stations ${segment.from} and ${segment.to}`
+        );
         return new NextResponse(
           JSON.stringify({
             error: `No route segment found between stations ${segment.from} and ${segment.to}`,
@@ -249,7 +246,7 @@ export async function GET(request) {
 
     // Nhóm ghế theo seat_type và coach
     const seatMap = {};
-    seats.forEach((seat) => {
+    seatsWithAvailability.forEach((seat) => {
       const seat_type = seat.seat_type;
       const coach = seat.coach;
 
@@ -260,13 +257,9 @@ export async function GET(request) {
         seatMap[seat_type][coach] = [];
       }
 
-      const isAvailable = availableSeats.some(
-        (availableSeat) => availableSeat.seatID === seat.seatID
-      );
-
       seatMap[seat_type][coach].push({
         seat_number: seat.seat_number,
-        is_available: isAvailable,
+        is_available: seat.is_available,
       });
     });
 
