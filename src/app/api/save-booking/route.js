@@ -218,6 +218,17 @@ export async function POST(request) {
 
           const [coach, seat_number] = ticketData.coach_seat.split("-");
 
+          // Chuẩn hóa travel_date
+          const travelDate = new Date(ticketData.travel_date);
+          travelDate.setUTCHours(0, 0, 0, 0);
+          console.log(
+            `Chuẩn hóa travel_date: ${travelDate.toISOString()}, trainID: ${
+              ticketData.trainID
+            }, toa: ${coach}, ghế: ${seat_number}, seat_type: ${
+              ticketData.seatType
+            }`
+          );
+
           // Kiểm tra ghế có tồn tại trước khi cập nhật
           const seat = await prisma.seattrain.findFirst({
             where: {
@@ -225,13 +236,15 @@ export async function POST(request) {
               coach,
               seat_number,
               seat_type: ticketData.seatType,
-              travel_date: new Date(ticketData.travel_date),
+              travel_date: travelDate,
             },
           });
 
           if (!seat) {
             console.error(
-              `Không tìm thấy ghế: trainID=${ticketData.trainID}, toa=${coach}, ghế=${seat_number}, ngày=${ticketData.travel_date}`
+              `Không tìm thấy ghế: trainID=${
+                ticketData.trainID
+              }, toa=${coach}, ghế=${seat_number}, ngày=${travelDate.toISOString()}`
             );
             throw new Error("Không tìm thấy ghế trong seattrain");
           }
@@ -246,7 +259,7 @@ export async function POST(request) {
               ticketData.q_code ||
               `QR_${Math.random().toString(36).substr(2, 9)}`,
             coach_seat: ticketData.coach_seat,
-            travel_date: new Date(ticketData.travel_date || Date.now()),
+            travel_date: travelDate,
             departTime: ticketData.departTime
               ? parseUTCTime(ticketData.travel_date, ticketData.departTime)
               : new Date(`${ticketData.travel_date}T00:00:00Z`),
@@ -310,17 +323,22 @@ export async function POST(request) {
                 coach,
                 seat_number,
                 seat_type: ticketData.seatType,
-                travel_date: new Date(ticketData.travel_date),
+                travel_date: travelDate,
               },
               data: { is_available: false },
             });
             console.log(
-              `Đã cập nhật ${updateResult.count} ghế cho toa ${coach}, ghế ${seat_number}, ngày ${ticketData.travel_date}`
+              `Đã cập nhật ${
+                updateResult.count
+              } ghế cho toa ${coach}, ghế ${seat_number}, ngày ${travelDate.toISOString()}`
             );
             if (updateResult.count === 0) {
               console.error(
-                `Không có ghế nào được cập nhật: trainID=${ticketData.trainID}, toa=${coach}, ghế=${seat_number}, ngày=${ticketData.travel_date}`
+                `Không có ghế nào được cập nhật: trainID=${
+                  ticketData.trainID
+                }, toa=${coach}, ghế=${seat_number}, ngày=${travelDate.toISOString()}`
               );
+              throw new Error("Không thể cập nhật trạng thái ghế");
             }
           }
 

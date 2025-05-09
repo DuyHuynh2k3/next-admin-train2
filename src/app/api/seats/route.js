@@ -90,20 +90,25 @@ export async function GET(request) {
     // Kiểm tra cache
     let client;
     try {
-      client = await initRedis();
-      if (client.isOpen) {
-        const cacheKey = `seats:${trainID}:${travelDate}:${fromStationID}:${toStationID}`;
-        const cached = await client.get(cacheKey);
-        if (cached) {
-          console.log("Cache hit cho key:", cacheKey);
-          return new NextResponse(cached, {
-            status: 200,
-            headers: corsHeaders,
-          });
+      if (process.env.NODE_ENV !== "test") {
+        // Bỏ qua cache trong môi trường kiểm tra
+        client = await initRedis();
+        if (client.isOpen) {
+          const cacheKey = `seats:${trainID}:${travelDate}:${fromStationID}:${toStationID}`;
+          const cached = await client.get(cacheKey);
+          if (cached) {
+            console.log("Cache hit cho key:", cacheKey);
+            return new NextResponse(cached, {
+              status: 200,
+              headers: corsHeaders,
+            });
+          }
+          console.log("Cache miss cho key:", cacheKey);
+        } else {
+          console.warn("Redis không kết nối, bỏ qua cache");
         }
-        console.log("Cache miss cho key:", cacheKey);
       } else {
-        console.warn("Redis không kết nối, bỏ qua cache");
+        console.log("Bỏ qua cache Redis trong môi trường kiểm tra");
       }
     } catch (redisError) {
       console.warn("Redis không khả dụng, bỏ qua cache:", redisError.message);
@@ -179,7 +184,7 @@ export async function GET(request) {
           seatID: { in: seatIDs },
           trainID: trainID,
           travel_date: dateStart,
-          OR: segmentConditions, // Sử dụng segmentConditions để lọc
+          OR: segmentConditions,
         },
         select: {
           seatID: true,
@@ -291,7 +296,7 @@ export async function GET(request) {
     if (client && client.isOpen) {
       try {
         const cacheKey = `seats:${trainID}:${travelDate}:${fromStationID}:${toStationID}`;
-        await client.setEx(cacheKey, 3600, JSON.stringify(formattedResult)); // TTL tăng lên 1 giờ
+        await client.setEx(cacheKey, 3600, JSON.stringify(formattedResult));
         console.log("Đã lưu cache cho key:", cacheKey);
       } catch (redisError) {
         console.warn("Không thể lưu cache:", redisError.message);
