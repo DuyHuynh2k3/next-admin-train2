@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { createClient } from "redis";
 
 const passengerTypeEnum = {
   0: "Adult",
@@ -10,6 +11,30 @@ const passengerTypeEnum = {
 
 const prisma = new PrismaClient();
 
+// Khởi tạo Redis client
+let redisClient;
+async function initRedis() {
+  if (!redisClient) {
+    redisClient = createClient({
+      url: process.env.REDIS_URL || "redis://localhost:6379",
+      socket: {
+        tls: process.env.REDIS_URL?.startsWith("rediss://"),
+        connectTimeout: 5000,
+        reconnectStrategy: (retries) =>
+          retries > 3
+            ? new Error("Hết lần thử kết nối Redis")
+            : Math.min(retries * 1000, 3000),
+      },
+      retryStrategy: (times) => Math.min(times * 100, 2000),
+    });
+    redisClient.on("error", (err) => console.error("Redis Client Error:", err));
+    redisClient.on("connect", () => console.log("Kết nối Redis thành công"));
+    redisClient.on("end", () => console.log("Mất kết nối Redis"));
+    await redisClient.connect();
+  }
+  return redisClient;
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "http://www.goticket.click",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -17,10 +42,11 @@ const corsHeaders = {
 };
 
 const parseUTCTime = (dateStr, timeStr) => {
-  const [hours, minutes] = timeStr.split(":");
+  const [hours, minutes, seconds = "00"] = timeStr.split(":");
   const date = new Date(dateStr);
   date.setUTCHours(parseInt(hours));
   date.setUTCMinutes(parseInt(minutes));
+  date.setUTCSeconds(parseInt(seconds));
   return date;
 };
 
@@ -129,7 +155,7 @@ export async function POST(request) {
       paymentData,
       sendEmail = true,
     } = await request.json();
-    console.log("Received sendEmail:", sendEmail); // Log để debug
+    console.log("Received sendEmail:", sendEmail);
 
     console.log("Received customerData.passport:", customerData.passport);
     ticketDataList.forEach((ticketData, index) => {
@@ -175,6 +201,8 @@ export async function POST(request) {
       });
 
       const createdTickets = [];
+      const redisClient = await initRedis();
+
       for (const ticketData of ticketDataList) {
         if (ticketData.passport && ticketData.passport !== customer.passport) {
           console.log(
@@ -196,6 +224,49 @@ export async function POST(request) {
           });
         }
 
+        // Tìm seatID từ coach_seat nếu không có seatID
+        let seatID = ticketData.seatID;
+        if (!seatID && ticketData.coach_seat) {
+          const [coach, seat_number] = ticketData.coach_seat.split("-");
+          const seat = await prisma.seattrain.findFirst({
+            where: {
+              trainID: ticketData.trainID,
+              travel_date: new Date(ticketData.travel_date),
+              coach,
+              seat_number,
+              seat_type: ticketData.seatType,
+            },
+            select: { seatID: true },
+          });
+
+          if (!seat) {
+            throw new Error(
+              `Seat ${ticketData.coach_seat} not found for trainID ${ticketData.trainID} on ${ticketData.travel_date}`
+            );
+          }
+          seatID = seat.seatID;
+        }
+
+        if (!seatID) {
+          throw new Error("seatID or coach_seat is required");
+        }
+
+        // Kiểm tra ghế đã được đặt chưa
+        const existingTicket = await prisma.ticket.findFirst({
+          where: {
+            seatID: seatID,
+            trainID: ticketData.trainID,
+            travel_date: new Date(ticketData.travel_date),
+            from_station_id: ticketData.from_station_id,
+            to_station_id: ticketData.to_station_id,
+          },
+        });
+        if (existingTicket) {
+          throw new Error(
+            `Seat ${ticketData.coach_seat} already booked for this journey`
+          );
+        }
+
         const ticketCreateData = {
           booking: {
             connect: { booking_id: booking.booking_id },
@@ -204,8 +275,8 @@ export async function POST(request) {
           phoneNumber: ticketData.phoneNumber,
           email: ticketData.email,
           seatType: ticketData.seatType,
-          q_code:
-            ticketData.q_code ||
+          qr_code:
+            ticketData.qr_code ||
             `QR_${Math.random().toString(36).substr(2, 9)}`,
           coach_seat: ticketData.coach_seat,
           travel_date: new Date(ticketData.travel_date || Date.now()),
@@ -230,17 +301,12 @@ export async function POST(request) {
           station_ticket_to_station_idTostation: {
             connect: { station_id: ticketData.to_station_id },
           },
+          seattrain: { connect: { seatID: seatID } },
         };
 
         if (ticketData.passport) {
           ticketCreateData.customer = {
             connect: { passport: ticketData.passport },
-          };
-        }
-
-        if (ticketData.seatID) {
-          ticketCreateData.seattrain = {
-            connect: { seatID: ticketData.seatID },
           };
         }
 
@@ -259,27 +325,46 @@ export async function POST(request) {
 
         createdTickets.push(ticket);
 
-        if (ticketData.seatID) {
-          await prisma.seattrain.update({
-            where: { seatID: ticketData.seatID },
-            data: { is_available: false },
-          });
-        } else if (
-          !ticketData.seatID &&
-          ticketData.trainID &&
-          ticketData.coach_seat
-        ) {
-          const [coach, seat_number] = ticketData.coach_seat.split("-");
-          await prisma.seattrain.updateMany({
-            where: {
+        // Cập nhật seattrain.is_available = false
+        await prisma.seattrain.update({
+          where: { seatID: seatID },
+          data: { is_available: false },
+        });
+
+        // Cập nhật hoặc tạo seat_availability_segment
+        await prisma.seat_availability_segment.upsert({
+          where: {
+            seatID_trainID_travel_date_from_station_id_to_station_id: {
+              seatID: seatID,
               trainID: ticketData.trainID,
-              coach,
-              seat_number,
-              seat_type: ticketData.seatType,
               travel_date: new Date(ticketData.travel_date),
+              from_station_id: ticketData.from_station_id,
+              to_station_id: ticketData.to_station_id,
             },
-            data: { is_available: false },
-          });
+          },
+          update: {
+            is_available: false,
+          },
+          create: {
+            seatID: seatID,
+            trainID: ticketData.trainID,
+            travel_date: new Date(ticketData.travel_date),
+            from_station_id: ticketData.from_station_id,
+            to_station_id: ticketData.to_station_id,
+            is_available: false,
+          },
+        });
+
+        // Xóa cache Redis
+        const cacheKey = `seats:${ticketData.trainID}:${ticketData.travel_date}:${ticketData.from_station_id}:${ticketData.to_station_id}`;
+        try {
+          await redisClient.del(cacheKey);
+          console.log(`Cleared cache for key: ${cacheKey}`);
+        } catch (redisError) {
+          console.warn(
+            `Failed to clear cache for key ${cacheKey}:`,
+            redisError.message
+          );
         }
 
         if (paymentData) {
