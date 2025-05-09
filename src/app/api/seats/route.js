@@ -179,6 +179,7 @@ export async function GET(request) {
           seatID: { in: seatIDs },
           trainID: trainID,
           travel_date: dateStart,
+          OR: segmentConditions, // Sử dụng segmentConditions để lọc
         },
         select: {
           seatID: true,
