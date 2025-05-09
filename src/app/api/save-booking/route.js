@@ -1,4 +1,3 @@
-// src/app/api/save-booking/route.js
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
@@ -11,7 +10,6 @@ const passengerTypeEnum = {
 
 const prisma = new PrismaClient();
 
-// CORS headers
 const corsHeaders = {
   "Access-Control-Allow-Origin": "http://www.goticket.click",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -125,9 +123,13 @@ async function sendBookingEmail(tickets, booking, email) {
 export async function POST(request) {
   let transaction;
   try {
-    const { customerData, ticketDataList, paymentData } = await request.json();
+    const {
+      customerData,
+      ticketDataList,
+      paymentData,
+      sendEmail = true,
+    } = await request.json();
 
-    // Thêm log để kiểm tra dữ liệu đầu vào
     console.log("Received customerData.passport:", customerData.passport);
     ticketDataList.forEach((ticketData, index) => {
       console.log(
@@ -147,7 +149,6 @@ export async function POST(request) {
     }
 
     transaction = await prisma.$transaction(async (prisma) => {
-      // 1. Create or update customer
       const customer = await prisma.customer.upsert({
         where: { passport: customerData.passport },
         update: {
@@ -163,7 +164,6 @@ export async function POST(request) {
         },
       });
 
-      // 2. Create booking
       const booking = await prisma.booking.create({
         data: {
           customer_passport: customer.passport,
@@ -173,10 +173,8 @@ export async function POST(request) {
         },
       });
 
-      // 3. Create tickets
       const createdTickets = [];
       for (const ticketData of ticketDataList) {
-        // Kiểm tra và tạo customer cho ticketData.passport nếu cần
         if (ticketData.passport && ticketData.passport !== customer.passport) {
           console.log(
             `Passport trong ticketData (${ticketData.passport}) không khớp với customer.passport (${customer.passport}). Tạo customer mới...`
@@ -233,7 +231,6 @@ export async function POST(request) {
           },
         };
 
-        // Sử dụng quan hệ `customer` thay vì `passport`
         if (ticketData.passport) {
           ticketCreateData.customer = {
             connect: { passport: ticketData.passport },
@@ -261,7 +258,6 @@ export async function POST(request) {
 
         createdTickets.push(ticket);
 
-        // Update seat status
         if (ticketData.seatID) {
           await prisma.seattrain.update({
             where: { seatID: ticketData.seatID },
@@ -285,7 +281,6 @@ export async function POST(request) {
           });
         }
 
-        // Create payment
         if (paymentData) {
           await prisma.payment_ticket.create({
             data: {
@@ -299,8 +294,9 @@ export async function POST(request) {
         }
       }
 
-      // Gửi email xác nhận
-      await sendBookingEmail(createdTickets, booking, customerData.email);
+      if (sendEmail) {
+        await sendBookingEmail(createdTickets, booking, customerData.email);
+      }
 
       return {
         booking,
@@ -337,7 +333,6 @@ export async function POST(request) {
   }
 }
 
-// Xử lý yêu cầu OPTIONS (preflight CORS)
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
