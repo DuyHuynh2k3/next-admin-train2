@@ -129,6 +129,7 @@ export async function POST(request) {
       paymentData,
       sendEmail = true,
     } = await request.json();
+    console.log("Received sendEmail:", sendEmail); // Log để debug
 
     console.log("Received customerData.passport:", customerData.passport);
     ticketDataList.forEach((ticketData, index) => {
@@ -295,7 +296,10 @@ export async function POST(request) {
       }
 
       if (sendEmail) {
+        console.log("Calling sendBookingEmail for email:", customerData.email);
         await sendBookingEmail(createdTickets, booking, customerData.email);
+      } else {
+        console.log("Skipping sendBookingEmail due to sendEmail: false");
       }
 
       return {
