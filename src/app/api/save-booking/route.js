@@ -15,22 +15,29 @@ const prisma = new PrismaClient();
 let redisClient;
 async function initRedis() {
   if (!redisClient) {
-    redisClient = createClient({
-      url: process.env.REDIS_URL || "redis://localhost:6379",
-      socket: {
-        tls: process.env.REDIS_URL?.startsWith("rediss://"),
-        connectTimeout: 5000,
-        reconnectStrategy: (retries) =>
-          retries > 3
-            ? new Error("Hết lần thử kết nối Redis")
-            : Math.min(retries * 1000, 3000),
-      },
-      retryStrategy: (times) => Math.min(times * 100, 2000),
-    });
-    redisClient.on("error", (err) => console.error("Redis Client Error:", err));
-    redisClient.on("connect", () => console.log("Kết nối Redis thành công"));
-    redisClient.on("end", () => console.log("Mất kết nối Redis"));
-    await redisClient.connect();
+    try {
+      redisClient = createClient({
+        url: process.env.REDIS_URL || "redis://localhost:6379",
+        socket: {
+          tls: process.env.REDIS_URL?.startsWith("rediss://"),
+          connectTimeout: 5000,
+          reconnectStrategy: (retries) =>
+            retries > 3
+              ? new Error("Hết lần thử kết nối Redis")
+              : Math.min(retries * 1000, 3000),
+        },
+        retryStrategy: (times) => Math.min(times * 100, 2000),
+      });
+      redisClient.on("error", (err) =>
+        console.error("Redis Client Error:", err)
+      );
+      redisClient.on("connect", () => console.log("Kết nối Redis thành công"));
+      redisClient.on("end", () => console.log("Mất kết nối Redis"));
+      await redisClient.connect();
+    } catch (error) {
+      console.warn("Không thể kết nối Redis:", error.message);
+      return null;
+    }
   }
   return redisClient;
 }
@@ -42,12 +49,20 @@ const corsHeaders = {
 };
 
 const parseUTCTime = (dateStr, timeStr) => {
-  const [hours, minutes, seconds = "00"] = timeStr.split(":");
-  const date = new Date(dateStr);
-  date.setUTCHours(parseInt(hours));
-  date.setUTCMinutes(parseInt(minutes));
-  date.setUTCSeconds(parseInt(seconds));
-  return date;
+  try {
+    const [hours, minutes, seconds = "00"] = timeStr.split(":");
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      throw new Error(`Invalid date: ${dateStr}`);
+    }
+    date.setUTCHours(parseInt(hours));
+    date.setUTCMinutes(parseInt(minutes));
+    date.setUTCSeconds(parseInt(seconds.split(".")[0]));
+    return date;
+  } catch (error) {
+    console.error("Error parsing UTC time:", error.message);
+    throw error;
+  }
 };
 
 async function sendBookingEmail(tickets, booking, email) {
@@ -155,21 +170,20 @@ export async function POST(request) {
       paymentData,
       sendEmail = true,
     } = await request.json();
-    console.log("Received sendEmail:", sendEmail);
+    console.log(
+      "Received payload:",
+      JSON.stringify(
+        { customerData, ticketDataList, paymentData, sendEmail },
+        null,
+        2
+      )
+    );
 
-    console.log("Received customerData.passport:", customerData.passport);
-    ticketDataList.forEach((ticketData, index) => {
-      console.log(
-        `Received ticketData[${index}].passport:`,
-        ticketData.passport
-      );
-    });
-
-    if (!customerData?.passport || !ticketDataList?.length) {
+    if (!customerData?.passport || !ticketDataList?.length || !paymentData) {
       return new NextResponse(
         JSON.stringify({
           success: false,
-          error: "Thông tin người đặt và vé là bắt buộc",
+          error: "Thông tin người đặt, vé và thanh toán là bắt buộc",
         }),
         { status: 400, headers: corsHeaders }
       );
@@ -201,9 +215,10 @@ export async function POST(request) {
       });
 
       const createdTickets = [];
-      const redisClient = await initRedis();
 
       for (const ticketData of ticketDataList) {
+        console.log("Processing ticket:", JSON.stringify(ticketData, null, 2));
+
         if (ticketData.passport && ticketData.passport !== customer.passport) {
           console.log(
             `Passport trong ticketData (${ticketData.passport}) không khớp với customer.passport (${customer.passport}). Tạo customer mới...`
@@ -228,6 +243,9 @@ export async function POST(request) {
         let seatID = ticketData.seatID;
         if (!seatID && ticketData.coach_seat) {
           const [coach, seat_number] = ticketData.coach_seat.split("-");
+          console.log(
+            `Finding seat for trainID=${ticketData.trainID}, travel_date=${ticketData.travel_date}, coach=${coach}, seat_number=${seat_number}, seat_type=${ticketData.seatType}`
+          );
           const seat = await prisma.seattrain.findFirst({
             where: {
               trainID: ticketData.trainID,
@@ -240,30 +258,76 @@ export async function POST(request) {
           });
 
           if (!seat) {
-            throw new Error(
-              `Seat ${ticketData.coach_seat} not found for trainID ${ticketData.trainID} on ${ticketData.travel_date}`
+            console.warn(
+              `Seat ${ticketData.coach_seat} not found for trainID ${ticketData.trainID} on ${ticketData.travel_date}. Creating new seat...`
             );
+            const newSeat = await prisma.seattrain.create({
+              data: {
+                trainID: ticketData.trainID,
+                travel_date: new Date(ticketData.travel_date),
+                coach,
+                seat_number,
+                seat_type: ticketData.seatType,
+                is_available: true,
+              },
+            });
+            seatID = newSeat.seatID;
+            console.log(`Created new seat with seatID: ${seatID}`);
+          } else {
+            seatID = seat.seatID;
+            console.log(`Found seat with seatID: ${seatID}`);
           }
-          seatID = seat.seatID;
         }
 
         if (!seatID) {
           throw new Error("seatID or coach_seat is required");
         }
 
-        // Kiểm tra ghế đã được đặt chưa
+        // Kiểm tra ghế đã được đặt chưa (nới lỏng điều kiện)
         const existingTicket = await prisma.ticket.findFirst({
           where: {
             seatID: seatID,
             trainID: ticketData.trainID,
             travel_date: new Date(ticketData.travel_date),
-            from_station_id: ticketData.from_station_id,
-            to_station_id: ticketData.to_station_id,
+            OR: [
+              {
+                from_station_id: ticketData.from_station_id,
+                to_station_id: ticketData.to_station_id,
+              },
+              {
+                from_station_id: ticketData.to_station_id,
+                to_station_id: ticketData.from_station_id,
+              },
+            ],
           },
         });
         if (existingTicket) {
           throw new Error(
-            `Seat ${ticketData.coach_seat} already booked for this journey`
+            `Seat ${ticketData.coach_seat} already booked for this journey on ${ticketData.travel_date}`
+          );
+        }
+
+        // Kiểm tra station và train tồn tại
+        const train = await prisma.train.findUnique({
+          where: { trainID: ticketData.trainID },
+        });
+        if (!train) {
+          throw new Error(`Train ${ticketData.trainID} not found`);
+        }
+
+        const fromStation = await prisma.station.findUnique({
+          where: { station_id: ticketData.from_station_id },
+        });
+        const toStation = await prisma.station.findUnique({
+          where: { station_id: ticketData.to_station_id },
+        });
+        if (!fromStation || !toStation) {
+          throw new Error(
+            `Station ${
+              !fromStation
+                ? ticketData.from_station_id
+                : ticketData.to_station_id
+            } not found`
           );
         }
 
@@ -279,7 +343,7 @@ export async function POST(request) {
             ticketData.qr_code ||
             `QR_${Math.random().toString(36).substr(2, 9)}`,
           coach_seat: ticketData.coach_seat,
-          travel_date: new Date(ticketData.travel_date || Date.now()),
+          travel_date: new Date(ticketData.travel_date),
           departTime: ticketData.departTime
             ? parseUTCTime(ticketData.travel_date, ticketData.departTime)
             : new Date(`${ticketData.travel_date}T00:00:00Z`),
@@ -326,12 +390,16 @@ export async function POST(request) {
         createdTickets.push(ticket);
 
         // Cập nhật seattrain.is_available = false
+        console.log(`Updating seattrain for seatID: ${seatID}`);
         await prisma.seattrain.update({
           where: { seatID: seatID },
           data: { is_available: false },
         });
 
         // Cập nhật hoặc tạo seat_availability_segment
+        console.log(
+          `Updating seat_availability_segment for seatID: ${seatID}, trainID: ${ticketData.trainID}, travel_date: ${ticketData.travel_date}, from: ${ticketData.from_station_id}, to: ${ticketData.to_station_id}`
+        );
         await prisma.seat_availability_segment.upsert({
           where: {
             seatID_trainID_travel_date_from_station_id_to_station_id: {
@@ -357,14 +425,20 @@ export async function POST(request) {
 
         // Xóa cache Redis
         const cacheKey = `seats:${ticketData.trainID}:${ticketData.travel_date}:${ticketData.from_station_id}:${ticketData.to_station_id}`;
-        try {
-          await redisClient.del(cacheKey);
-          console.log(`Cleared cache for key: ${cacheKey}`);
-        } catch (redisError) {
-          console.warn(
-            `Failed to clear cache for key ${cacheKey}:`,
-            redisError.message
-          );
+        console.log(`Attempting to clear cache for key: ${cacheKey}`);
+        const redis = await initRedis();
+        if (redis) {
+          try {
+            await redis.del(cacheKey);
+            console.log(`Cleared cache for key: ${cacheKey}`);
+          } catch (redisError) {
+            console.warn(
+              `Failed to clear cache for key ${cacheKey}:`,
+              redisError.message
+            );
+          }
+        } else {
+          console.warn("Redis not available, skipping cache clear");
         }
 
         if (paymentData) {
