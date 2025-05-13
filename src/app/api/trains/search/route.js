@@ -138,7 +138,7 @@ export async function GET(req) {
 
   response.headers.set(
     "Access-Control-Allow-Origin",
-    "http://www.goticket.click"
+    "https://www.goticket.click"
   );
   response.headers.set(
     "Access-Control-Allow-Methods",

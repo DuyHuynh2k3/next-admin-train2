@@ -5,7 +5,7 @@ import prisma from "@/lib/prisma";
 function withCors(response) {
   response.headers.set(
     "Access-Control-Allow-Origin",
-    "http://www.goticket.click"
+    "https://www.goticket.click"
   );
   response.headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
   response.headers.set(

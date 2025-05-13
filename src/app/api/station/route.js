@@ -52,7 +52,7 @@ async function initRedis() {
 }
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "http://www.goticket.click",
+  "Access-Control-Allow-Origin": "https://www.goticket.click",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
