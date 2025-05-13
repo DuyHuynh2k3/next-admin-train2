@@ -156,13 +156,7 @@ export async function POST(request) {
   let redisClient;
   try {
     redisClient = await initRedis();
-    const {
-      customerData,
-      ticketDataList,
-      paymentData,
-      sendEmail = true,
-    } = await request.json();
-    console.log("Received sendEmail:", sendEmail); // Log để debug
+    const { customerData, ticketDataList, paymentData } = await request.json();
 
     console.log("Received customerData.passport:", customerData.passport);
     ticketDataList.forEach((ticketData, index) => {
@@ -408,13 +402,9 @@ export async function POST(request) {
         }
       }
 
-      // Gửi email xác nhận nếu sendEmail là true
-      if (sendEmail) {
-        console.log("Calling sendBookingEmail for email:", customerData.email);
-        await sendBookingEmail(createdTickets, booking, customerData.email);
-      } else {
-        console.log("Skipping sendBookingEmail due to sendEmail: false");
-      }
+      // Gửi email xác nhận
+      console.log("Calling sendBookingEmail for email:", customerData.email);
+      await sendBookingEmail(createdTickets, booking, customerData.email);
 
       return {
         booking,
